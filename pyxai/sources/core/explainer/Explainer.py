@@ -25,6 +25,7 @@ class Explainer:
         self._visualisation = Visualisation(self, do_history)
         self._glucose = None
         self._reference_instances = None
+        self._last_features_types = None
 
     def get_model(self):
         """
@@ -103,6 +104,7 @@ class Explainer:
                 Add a theory (related to the type of features) in the explainer.
                 @param features_types (str | list): the theory selected.
         """
+        self._last_features_types = features_types
         model = self.get_model()
         # To avoid a bug when several init done :)
         model.clear_theory_features()
@@ -230,7 +232,6 @@ class Explainer:
         self.activate_theory()
 
         self.map_indexes = dict()  # Used to count used_features_without_one_hot_encoded
-
         # Firstly, for the numerical one
         for feature in self._numerical_features:
             # Warning ids of features start from 1 to n (not 0), this is why there is +1 here.

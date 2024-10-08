@@ -4,7 +4,7 @@ from pyxai.sources.learning.learner_information import LearnerInformation
 
 from numpy import argmax, argmin
 import collections
-
+from collections.abc import Iterable
 
 class BinaryMapping():
 
@@ -139,13 +139,45 @@ class BinaryMapping():
                 id_binaries_of_the_feature.append(self.map_features_to_id_binaries[key][0])
 
         self.map_categorical_features_ordinal[id_feature] = id_binaries_of_the_feature
+    #
+    # Check the conditions and return the conditions in the form of literals
+    #
+    def parse_conditions_for_rectify(self, conditions):
+        new_conditions = []
+        change = False
+        #print("self.map_features_to_id_binaries:", self.map_features_to_id_binaries)
+                    
+        for element in conditions:
+            if isinstance(element, int):
+                new_conditions.append(element)
+            elif isinstance(element, tuple):
+                if len(element) != 4:
+                    raise ValueError("A condition in rectify is either a literal representing a condition or a condition in the form (id_feature, operator, value, sign).")
+                condition = tuple(element[0:3])
+                sign = element[3]
+                if condition in self.map_features_to_id_binaries:
+                    #Nothing to do: the literal exists.
+                    if sign == True:
+                        new_conditions.append(-self.map_features_to_id_binaries[condition][0])
+                    else:
+                        new_conditions.append(self.map_features_to_id_binaries[condition][0])
+                        
+                else:
+                    #The literal does not exist
+                    id_binary = len(self.map_id_binaries_to_features)
+                    if not isinstance(condition[1], OperatorCondition):
+                            raise ValueError("A condition in rectify is either a literal representing a condition or a condition in the form (id_feature, operator, value, sign). The operator have to be a OperatorCondition object.")
 
-
-    """
-        
-    """
-
-
+                    self.map_features_to_id_binaries[condition] = [id_binary, 0, 0]
+                    self.map_id_binaries_to_features.append(condition)
+                    assert self.map_id_binaries_to_features[id_binary] == condition
+                    new_conditions.append(-id_binary if sign == True else id_binary)
+                    change = True
+            else:
+                raise ValueError("A condition in rectify is either a literal (int) representing a condition or a condition in the form (id_feature, operator, value, sign).")
+        return tuple(new_conditions), change      
+                
+                
     def get_theory(self, binary_representation, *, theory_type=TypeTheory.SIMPLE, id_new_var=0):
         
         if theory_type == TypeTheory.NEW_VARIABLES:
@@ -162,6 +194,8 @@ class BinaryMapping():
         new_variables = []
 
         # For numerical features
+        #print("self.map_numerical_features:", self.map_numerical_features)
+        #print("conditions:", self.map_id_binaries_to_features)
         for key in self.map_numerical_features.keys():
             id_binaries = self.map_numerical_features[key]
             conditions = [tuple(list(self.map_id_binaries_to_features[id]) + [id]) for id in id_binaries]
@@ -182,14 +216,21 @@ class BinaryMapping():
 
         # For categorical features that was one hot encoded
         for key in self.map_categorical_features_one_hot.keys():
+            #print("key:", key)
             id_binaries = self.map_categorical_features_one_hot[key]
+            #print("key:", id_binaries)
+            
+            
             for i, id_1 in enumerate(id_binaries):
                 for j, id_2 in enumerate(id_binaries):
                     if i != j:
-                        # we code a => not b that is equivalent to not a or not b (material implication)
+                        #if self.map_id_binaries_to_features[abs(id_1)][0] == self.map_id_binaries_to_features[abs(id_2)][0]:
+                        #    clauses.append((-id_1, id_2))
+                        #    clauses.append((id_1, -id_2))
+                        #else:
+                            # we code a => not b that is equivalent to not a or not b (material implication)
                         clauses.append((-id_1, -id_2))
-
-                        # For binary feature, nothing to do.
+                            # For binary feature, nothing to do.
 
         if theory_type == TypeTheory.SIMPLE:
             return clauses

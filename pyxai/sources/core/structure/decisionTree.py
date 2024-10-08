@@ -46,6 +46,26 @@ class DecisionTree(BinaryMapping):
         s += "nVariables: " + str(len(self.map_id_binaries_to_features) - 1) + os.linesep
         return s
 
+    def from_tuples(self, tuples):
+        if isinstance(tuples, int):
+            return LeafNode(tuples)
+ 
+        binary_variable = tuples[0]
+        id_feature, op, threshold = self.map_id_binaries_to_features[binary_variable]
+        
+        node = DecisionNode(id_feature, threshold=threshold, operator=op, left=None, right=None)
+        node.left = self.from_tuples(tuples[1][0])
+        node.right = self.from_tuples(tuples[1][1])
+        return node
+
+    
+    def delete(self, node):
+        if node.is_leaf(): 
+            del node
+        else:
+            self.delete(node.left)
+            self.delete(node.right)
+            del node
 
     def raw_data_for_CPP(self):
         raw_t = tuple([self.root.value]) if self.root.is_leaf() else self.to_tuples(self.root, for_cpp=True)
@@ -77,6 +97,10 @@ class DecisionTree(BinaryMapping):
     def simplify(self):
         while self._simplify(self.root, self.root):
             pass
+        raw = self.to_tuples(self.root)
+        if raw[1] == raw[2]:
+            self.root = self.root.left
+        
 
 
     def _simplify(self, root, node, path=[], come_from=None, previous_node=None, previous_previous_node=None):
@@ -122,8 +146,15 @@ class DecisionTree(BinaryMapping):
         Returns:
             DecisionTree: A decision tree representing the decision rule.  
     """
-    def decision_rule_to_tree(self, decision_rule):
+    def decision_rule_to_tree(self, decision_rule, label):
         
+        print("decision_rule:",decision_rule)
+        if len(decision_rule) == 0:
+            tree = DecisionTree(self.n_features, LeafNode(label))
+            tree.map_id_binaries_to_features = self.map_id_binaries_to_features
+            tree.map_features_to_id_binaries = self.map_features_to_id_binaries
+            return tree
+
         literal = decision_rule[-1]
         
         id_feature, operator, threshold  = self.map_id_binaries_to_features[abs(literal)]
@@ -331,7 +362,10 @@ class DecisionTree(BinaryMapping):
             self.display(node.left)
             self.display(node.right)
 
-
+    ###
+    # Do not use directly, as the implicant cannot coincide with the theory 
+    # (use is_implicant of explainer object instead)
+    ###
     def is_implicant(self, reason, target_prediction):
         return self.root.is_implicant(reason, target_prediction, self.map_features_to_id_binaries)
 

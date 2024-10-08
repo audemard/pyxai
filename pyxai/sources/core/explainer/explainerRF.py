@@ -30,6 +30,7 @@ class ExplainerRF(Explainer):
 
         self._random_forest = random_forest
         self.c_RF = None
+        self.c_rectifier = None
 
         if instance is not None:
             self.set_instance(instance)
@@ -64,10 +65,14 @@ class ExplainerRF(Explainer):
     def _to_binary_representation(self, instance):
         return self._random_forest.instance_to_binaries(instance)
 
+    def is_implicant(self, binary_representation, *, prediction=None):
+        if prediction is None: 
+            prediction = self.target_prediction
+        binary_representation = self.extend_reason_with_theory(binary_representation)
+        return self._random_forest.is_implicant(binary_representation, prediction)
 
-    def is_implicant(self, binary_representation):
-        return self._random_forest.is_implicant(binary_representation, self.target_prediction)
-
+    def predict_votes(self, instance):
+        return self._random_forest.predict_votes(instance)
 
     def predict(self, instance):
         return self._random_forest.predict_instance(instance)
@@ -317,7 +322,6 @@ class ExplainerRF(Explainer):
             n (int|ALL, optional): The desired number of reasons. Defaults to 1, currently needs to be 1 or Exmplainer.ALL.
             time_limit (int, optional): The maximum time to compute the reasons. None to have a infinite time. Defaults to None.
         """
-
         if self._instance is None:
             raise ValueError("Instance is not set")
 
@@ -342,7 +346,7 @@ class ExplainerRF(Explainer):
                 c_explainer.set_theory(self.c_RF, tuple(self._random_forest.get_theory(self._binary_representation)))
             current_time = time.process_time()
             reason = c_explainer.compute_reason(self.c_RF, self._binary_representation, implicant_id_features, self.target_prediction, n_iterations,
-                                                time_limit, int(reason_expressivity), seed)
+                                                time_limit, int(reason_expressivity), seed, 0)
             total_time = time.process_time() - current_time
             self._elapsed_time = total_time if time_limit == 0 or total_time < time_limit else Explainer.TIMEOUT
             if reason_expressivity == ReasonExpressivity.Features:
@@ -537,31 +541,141 @@ class ExplainerRF(Explainer):
         raise NotImplementedError("The anchored_reason() method for RF works only with binary-class datasets.")
         
 
-    def rectify(self, *, conditions, label):
+    def rectify_cxx(self, *, conditions, label, tests=False):
+        """
+        C++ version
+        Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
+        Simplify the model (the theory can help to eliminate some nodes).
+
+        Args:
+            conditions (list or tuple): A decision rule in the form of list of literals (binary variables representing the conditions of the tree). 
+            label (int): The label of the decision rule.   
+        Returns:
+            RandomForest: The rectified random forest.  
+        """ 
+
+        #check conditions and return a list of literals
+        #print("conditions:", conditions)
+        
+        conditions, change = self._random_forest.parse_conditions_for_rectify(conditions)
+        if change is True:
+            self.set_features_type(self._last_features_types)
+        
+        current_time = time.process_time()
+        if self.c_rectifier is None:
+            self.c_rectifier = c_explainer.new_rectifier()
+
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant ?", is_implicant)
+        
+        
+
+        for i, tree in enumerate(self._random_forest.forest):
+            c_explainer.rectifier_add_tree(self.c_rectifier, tree.raw_data_for_CPP())
+
+        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - Initial (c++):", n_nodes_cxx) 
+
+        # Rectification part
+        c_explainer.rectifier_improved_rectification(self.c_rectifier, conditions, label)
+        n_nodes_ccx =  c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After rectification (c++):", n_nodes_ccx)    
+        if tests is True:
+            for i in range(len(self._random_forest.forest)):
+                tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, i)
+                self._random_forest.forest[i].delete(self._random_forest.forest[i].root)
+                self._random_forest.forest[i].root = self._random_forest.forest[i].from_tuples(tree_tuples)
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after rectification ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 2")
+        
+
+        # Simplify Theory part
+        theory_cnf = self.get_model().get_theory(None)
+        c_explainer.rectifier_set_theory(self.c_rectifier, tuple(theory_cnf))
+        c_explainer.rectifier_simplify_theory(self.c_rectifier)
+
+        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After simplification with the theory (c++):", n_nodes_cxx)
+
+        if tests is True: 
+            for i in range(len(self._random_forest.forest)):
+                tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, i)
+                self._random_forest.forest[i].delete(self._random_forest.forest[i].root)
+                self._random_forest.forest[i].root = self._random_forest.forest[i].from_tuples(tree_tuples)
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after simplify theory ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 3")
+        
+        # Simplify part
+        c_explainer.rectifier_simplify_redundant(self.c_rectifier)
+        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After elimination of redundant nodes (c++):", n_nodes_cxx)
+        
+        # Get the C++ trees and convert it :) 
+        for i in range(len(self._random_forest.forest)):
+            tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, i)
+            self._random_forest.forest[i].delete(self._random_forest.forest[i].root)
+            self._random_forest.forest[i].root = self._random_forest.forest[i].from_tuples(tree_tuples)
+        
+        
+        c_explainer.rectifier_free(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - Final (c++):", self._random_forest.n_nodes())
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after simplify ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 4")
+        
+        if self._instance is not None:
+            self.set_instance(self._instance)
+
+        self._elapsed_time = time.process_time() - current_time
+        
+        Tools.verbose("Rectification time:", self._elapsed_time)
+
+        Tools.verbose("--------------")
+        return self._random_forest
+
+    def rectify(self, *, conditions, label, cxx=True, tests=False):
         """
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
         Simplify the model (the theory can help to eliminate some nodes).
 
         Args:
-            decision_rule (list or tuple): A decision rule in the form of list of literals (binary variables representing the conditions of the tree). 
+            conditions (list or tuple): A decision rule in the form of list of literals (binary variables representing the conditions of the tree). 
             label (int): The label of the decision rule.   
         Returns:
-            DecisionTree: The rectified tree.  
+            RandomForest: The rectified random forest.  
         """
+        
+        if cxx is True:
+            return self.rectify_cxx(conditions=conditions, label=label, tests=tests)
+
+        current_time = time.process_time()
+        #print("conditions:", conditions)
+        #print("conditions to features:", self.to_features(conditions, eliminate_redundant_features=False))
+        
+        
         Tools.verbose("")
-        Tools.verbose("-------------- Rectification information:")
-        tree_decision_rule = self._random_forest.forest[0].decision_rule_to_tree(conditions)
+        Tools.verbose("-------------- C++ Rectification information:")
+        n_nodes_python = self._random_forest.n_nodes()
+        Tools.verbose("Model - Number of nodes (initial):", n_nodes_python) 
 
-        Tools.verbose("Classification Rule - Number of nodes:", tree_decision_rule.n_nodes())
-        Tools.verbose("Model - Number of nodes:", self._random_forest.n_nodes())
+        is_implicant = self.is_implicant(conditions, prediction=label)
+        print("is_implicant ?", is_implicant)
+        Tools.verbose("Label:", label)
 
+        # Rectification part
         for i, tree in enumerate(self._random_forest.forest):
-            Tools.verbose("Model - Number of nodes "+str(i)+":"+ str(tree.n_nodes()))
-        for i, tree in enumerate(self._random_forest.forest):
+
+            tree_decision_rule = self._random_forest.forest[i].decision_rule_to_tree(conditions, label)
             if label == 1:
-                # When label is 1, we have to inverse the decision rule and disjoint the two trees.  
-                # Bug ici 
-                tree_decision_rule = tree_decision_rule.negating_tree()
+                # When label is 1, we have to inverse the decision rule and disjoint the two trees. 
+                tree_decision_rule = tree_decision_rule.negating_tree() 
                 self._random_forest.forest[i] = tree.disjoint_tree(tree_decision_rule)
             elif label == 0:
                 # When label is 0, we have to concatenate the two trees.  
@@ -569,17 +683,48 @@ class ExplainerRF(Explainer):
             else:
                 raise NotImplementedError("Multiclasses is in progress.")
             
-        Tools.verbose("Model - Number of nodes (after rectification):", self._random_forest.n_nodes())    
+        n_nodes_python = self._random_forest.n_nodes()
+        Tools.verbose("Model - Number of nodes (after rectification):", n_nodes_python) 
         
-        #for i, tree in enumerate(self._random_forest.forest):    
-        #    self._random_forest.forest[i] = self.simplify_theory(tree)
-        #Tools.verbose("Model - Number of nodes (after simplification using the theory):", self._random_forest.n_nodes())
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after rectification ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 2")
+            
+        # Simplify Theory part
+        for i, tree in enumerate(self._random_forest.forest):    
+            self._random_forest.forest[i] = self.simplify_theory(tree)
 
-        #for i, tree in enumerate(self._random_forest.forest):    
-        #    tree.simplify()
-        #Tools.verbose("Model - Number of nodes (after elimination of redundant nodes):", self._random_forest.n_nodes())
+        n_nodes_python = self._random_forest.n_nodes()
+        Tools.verbose("Model - Number of nodes (after simplification using the theory):", n_nodes_python)
         
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after simplify theory ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 3")
+
+        # Simplify part
+        for i, tree in enumerate(self._random_forest.forest):    
+            tree.simplify()
+        
+        n_nodes_python = self._random_forest.n_nodes()
+        Tools.verbose("Model - Number of nodes (after elimination of redundant nodes):", n_nodes_python)
+        
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after simplify ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 4")
+            
         if self._instance is not None:
             self.set_instance(self._instance)
+
+        self._elapsed_time = time.process_time() - current_time
+        
+        Tools.verbose("Rectification time:", self._elapsed_time)
+
         Tools.verbose("--------------")
+        
         return self._random_forest

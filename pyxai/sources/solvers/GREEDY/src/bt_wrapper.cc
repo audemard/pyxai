@@ -8,6 +8,7 @@
 #include<Python.h>
 #include "Node.h"
 #include "Explainer.h"
+#include "Rectifier.h"
 
 using namespace pyxai;
 static PyObject* vectorToTuple_Int(const std::vector<int> &data) {
@@ -60,6 +61,137 @@ PyObject *new_regression_BT(PyObject *self, PyObject *args) {
     return void_to_pyobject(explainer);
 }
 
+PyObject *new_rectifier(PyObject *self, PyObject *args) {
+    pyxai::Rectifier *rectifier = new pyxai::Rectifier();
+    return void_to_pyobject(rectifier);
+}
+
+static PyObject *rectifier_add_tree(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    PyObject *tree_obj;
+    if (!PyArg_ParseTuple(args, "OO", &class_obj, &tree_obj))
+        return NULL;
+    if (!PyTuple_Check(tree_obj)) {
+        PyErr_Format(PyExc_TypeError,
+                     "The second argument must be a tuple representing a raw tree and given by the python raw_tree() method !");
+        return NULL;
+    }
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->addTree(tree_obj);
+    return Py_None;
+}
+
+static PyObject *rectifier_add_decision_rule(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    PyObject *tree_obj;
+    if (!PyArg_ParseTuple(args, "OO", &class_obj, &tree_obj))
+        return NULL;
+    if (!PyTuple_Check(tree_obj)) {
+        PyErr_Format(PyExc_TypeError,
+                     "The second argument must be a tuple representing a raw tree and given by the python raw_tree() method !");
+        return NULL;
+    }
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->addDecisionRule(tree_obj);
+    return Py_None;
+}
+
+static PyObject *rectifier_improved_rectification(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    PyObject *conditions_tuple;
+    int label;
+
+    if (!PyArg_ParseTuple(args, "OOi", &class_obj, &conditions_tuple, &label))
+        return NULL;
+    
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->improvedRectification(conditions_tuple, label); 
+    return Py_None;
+}
+
+
+static PyObject *rectifier_disjoint_trees_decision_rule(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->disjointTreesDecisionRule();
+    return Py_None;
+}
+
+static PyObject *rectifier_concatenate_trees_decision_rule(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->concatenateTreesDecisionRule();
+    return Py_None;
+}
+
+static PyObject *rectifier_neg_decision_rules(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->negatingDecisionRules();
+    return Py_None;
+}
+
+static PyObject *rectifier_simplify_theory(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->simplifyTheory();
+    return Py_None;
+}
+
+static PyObject *rectifier_simplify_redundant(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->simplifyRedundant();
+    return Py_None;
+}
+
+static PyObject *rectifier_n_nodes(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    
+    return Py_BuildValue("i", rectifier->nNodes());
+}
+
+static PyObject *rectifier_free(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    if (!PyArg_ParseTuple(args, "O", &class_obj))
+        return NULL;
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->free();
+    return Py_None;
+}
+
+static PyObject *rectifier_get_tree(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    int id_tree_obj;
+
+    if (!PyArg_ParseTuple(args, "Oi", &class_obj, &id_tree_obj))
+        return NULL;
+
+    
+    // Get pointer to the class
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    return rectifier->trees[id_tree_obj]->toTuple();
+}
 
 static PyObject *add_tree(PyObject *self, PyObject *args) {
     PyObject *class_obj;
@@ -171,6 +303,46 @@ static PyObject *set_theory(PyObject *self, PyObject *args) {
     return Py_None;
 }
 
+static PyObject *rectifier_set_theory(PyObject *self, PyObject *args) {
+    PyObject *class_obj;
+    PyObject *vector_theory;
+    if (!PyArg_ParseTuple(args, "OO", &class_obj, &vector_theory)) {
+        return NULL;
+    }
+    if (!PyTuple_Check(vector_theory)) {
+        PyErr_Format(PyExc_TypeError,
+                     "The second argument must be a tuple reprenting the theory !");
+        return NULL;
+    }
+    
+    // Convert the vector of the instance
+
+    Py_ssize_t size_theory = PyTuple_Size(vector_theory);
+
+    std::vector<std::vector<Lit> > clauses;
+    int max = 0;
+    for(int i = 0; i < size_theory; i++) {
+        std::vector<Lit> c;
+        PyObject *value_obj = PyTuple_GetItem(vector_theory, i);
+        Py_ssize_t size_obj = PyTuple_Size(value_obj);
+        if (size_obj != 2)
+            throw std::logic_error("The clauses of the theory must be of size 2 (binary).");
+        for(int i = 0; i < size_obj; i++) {
+            long l = PyLong_AsLong(PyTuple_GetItem(value_obj, i));
+            if(max < std::abs(l)) max = std::abs(l);
+            c.push_back((l > 0) ? Lit::makeLit(l, false) : Lit::makeLit(-l, true));
+        }
+        clauses.push_back(c);
+    }
+    pyxai::Problem problem(clauses, max, std::cout, false);
+
+    pyxai::Rectifier *rectifier = (pyxai::Rectifier *) pyobject_to_void(class_obj);
+    rectifier->theory_propagator = new pyxai::Propagator(problem, false);
+    for(pyxai::Tree *t : rectifier->trees)
+        t->propagator = rectifier->theory_propagator;
+    return Py_None;
+}
+
 
 static PyObject *compute_reason(PyObject *self, PyObject *args) {
     PyObject *class_obj;
@@ -181,7 +353,9 @@ static PyObject *compute_reason(PyObject *self, PyObject *args) {
     long time_limit;
     long features_expressivity;
     long seed;
-    if (!PyArg_ParseTuple(args, "OOOLLLLL", &class_obj, &vector_instance_obj, &vector_features_obj, &prediction, &n_iterations, &time_limit, &features_expressivity, &seed))
+    double theta;
+
+    if (!PyArg_ParseTuple(args, "OOOLLLLLd", &class_obj, &vector_instance_obj, &vector_features_obj, &prediction, &n_iterations, &time_limit, &features_expressivity, &seed, &theta))
         return NULL;
 
     if (!PyTuple_Check(vector_instance_obj)) {
@@ -220,9 +394,9 @@ static PyObject *compute_reason(PyObject *self, PyObject *args) {
     explainer->set_time_limit(time_limit);
     bool ret;
     if (features_expressivity == 1)
-      ret = explainer->compute_reason_features(instance, features, prediction, reason);
+      ret = explainer->compute_reason_features(instance, features, prediction, reason, theta);
     else
-      ret = explainer->compute_reason_conditions(instance, prediction, reason, seed);
+      ret = explainer->compute_reason_conditions(instance, prediction, reason, seed, theta);
 
     if(ret == false)
         return Py_None;
@@ -245,6 +419,19 @@ static PyMethodDef module_methods[] = {
         {"new_classifier_BT", new_classifier_BT, METH_VARARGS, "Create a Classifier_BT explainer."},
         {"new_classifier_RF", new_classifier_RF, METH_VARARGS, "Create a Classifier_RF explainer."},
         {"new_regression_BT", new_regression_BT, METH_VARARGS, "Create a regression BT explainer."},
+        {"new_rectifier", new_rectifier, METH_VARARGS, "Create a rectifier."},
+        {"rectifier_add_tree", rectifier_add_tree, METH_VARARGS, "Add a tree in the rectifier."},
+        {"rectifier_add_decision_rule", rectifier_add_decision_rule, METH_VARARGS, "Set tree."},
+        {"rectifier_improved_rectification", rectifier_improved_rectification, METH_VARARGS, "Improved Rectification."},
+        {"rectifier_neg_decision_rules", rectifier_neg_decision_rules, METH_VARARGS, "Negating tree."},
+        {"rectifier_disjoint_trees_decision_rule", rectifier_disjoint_trees_decision_rule, METH_VARARGS, "rectifier_disjoint_trees_decision_rule."},
+        {"rectifier_concatenate_trees_decision_rule", rectifier_concatenate_trees_decision_rule, METH_VARARGS, "rectifier_concatenate_trees_decision_rule tree."},
+        {"rectifier_get_tree", rectifier_get_tree, METH_VARARGS, "rectifier_get_tree tree."},
+        {"rectifier_set_theory", rectifier_set_theory, METH_VARARGS, "rectifier_set_theory tree."},
+        {"rectifier_simplify_theory", rectifier_simplify_theory, METH_VARARGS, "rectifier_simplify_theory tree."},
+        {"rectifier_n_nodes", rectifier_n_nodes, METH_VARARGS, "rectifier_n_nodes tree."},
+        {"rectifier_simplify_redundant", rectifier_simplify_redundant, METH_VARARGS, "rectifier_simplify_redundant tree."},
+        {"rectifier_free", rectifier_free, METH_VARARGS, "rectif tree."},
         {"add_tree",          add_tree,          METH_VARARGS, "Add a tree."},
         {"set_excluded",      set_excluded,      METH_VARARGS, "Set excluded features"},
         {"set_theory",        set_theory,        METH_VARARGS, "Set the theory"},
