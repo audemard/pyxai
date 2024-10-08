@@ -1,5 +1,7 @@
 import time
 
+import numpy
+
 from pyxai.sources.core.explainer.Explainer import Explainer
 from pyxai.sources.core.structure.decisionTree import DecisionTree
 from pyxai.sources.core.structure.type import PreferredReasonMethod, TypeTheory
@@ -10,7 +12,6 @@ from pyxai.sources.solvers.MAXSAT.OPENWBOSolver import OPENWBOSolver
 from pyxai.sources.solvers.SAT.glucoseSolver import GlucoseSolver
 from pyxai import Tools
 
-import c_explainer
 class ExplainerDT(Explainer):
 
     def __init__(self, tree, instance=None):
@@ -22,9 +23,9 @@ class ExplainerDT(Explainer):
         """
         super().__init__()
         self._tree = tree  # The decision _tree.
+        self._additional_theory = []
         if instance is not None:
             self.set_instance(instance)
-        self.c_rectifier = None
 
 
     @property
@@ -42,11 +43,8 @@ class ExplainerDT(Explainer):
         return self._tree.instance_to_binaries(instance)
 
 
-    def is_implicant(self, binary_representation, *, prediction=None):
-        if prediction is None: 
-            prediction = self.target_prediction
-        binary_representation = self.extend_reason_with_theory(binary_representation)
-        return self._tree.is_implicant(binary_representation, prediction)
+    def is_implicant(self, binary_representation):
+        return self._tree.is_implicant(binary_representation, self.target_prediction)
 
 
     def predict(self, instance):
@@ -65,6 +63,9 @@ class ExplainerDT(Explainer):
         return self._tree.to_features(binary_representation, details=details, eliminate_redundant_features=eliminate_redundant_features,
                                       contrastive=contrastive, without_intervals=without_intervals, feature_names=self.get_feature_names())
 
+
+    def add_clause_to_theory(self, clause):
+        self._additional_theory.append(clause)
 
     def direct_reason(self):
         """
@@ -311,95 +312,83 @@ class ExplainerDT(Explainer):
     def is_reason(self, reason, *, n_samples=-1):
         return self._tree.is_implicant(reason, self.target_prediction)
 
+    def minimal_majoritary_reason(self, *, n=1, time_limit=None):
+        if self._instance is None:
+            raise ValueError("Instance is not set")
 
-    def rectify_cxx(self, *, conditions, label, tests=False):
-        """
-        C++ version
-        Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
-        Simplify the model (the theory can help to eliminate some nodes).
-        """ 
+        n = n if type(n) == int else float('inf')
 
-        #check conditions and return a list of literals
-        
-        conditions, change = self._tree.parse_conditions_for_rectify(conditions)
-        if change is True:
-            self.set_features_type(self._last_features_types)
-       
-        current_time = time.process_time()
-        if self.c_rectifier is None:
-            self.c_rectifier = c_explainer.new_rectifier()
+        clauses = self.tree.to_CNF(self._instance, self.target_prediction, format=False)
 
-        if tests is True:
-            is_implicant = self.is_implicant(conditions, prediction=label)
-            print("is_implicant ?", is_implicant)
-        
-        c_explainer.rectifier_add_tree(self.c_rectifier, self._tree.raw_data_for_CPP())
-        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - Initial (c++):", n_nodes_cxx) 
 
-        # Rectification part
-        c_explainer.rectifier_improved_rectification(self.c_rectifier, conditions, label)
-        n_nodes_ccx =  c_explainer.rectifier_n_nodes(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - After rectification (c++):", n_nodes_ccx)    
-        if tests is True:
-            
-            #for i in range(len(self._random_forest.forest)):
-            tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, 0)
-            self._tree.delete(self._tree.root)
-            self._tree.root = self._tree.from_tuples(tree_tuples)
-            is_implicant = self.is_implicant(conditions, prediction=label)
-            print("is_implicant after rectification ?", is_implicant)
-            if is_implicant is False:
-                raise ValueError("Problem 2")
-        
+        solver = OPENWBOSolver()
+        max_id_variable = len(self.binary_representation)
+        map_abs_implicant = [0 for _ in range(0, max_id_variable + 1)]
+        for lit in self._binary_representation:
+            map_abs_implicant[abs(lit)] = lit
+        # Hard clauses
+        for c in clauses:
+            solver.add_hard_clause(
+                [lit for lit in c if map_abs_implicant[abs(lit)] == lit])
 
-        # Simplify Theory part
-        theory_cnf = self.get_model().get_theory(None)
-        c_explainer.rectifier_set_theory(self.c_rectifier, tuple(theory_cnf))
-        c_explainer.rectifier_simplify_theory(self.c_rectifier)
+        # Theory
+        if self._theory:
+            clauses_theory = self.tree.get_theory(self._binary_representation)
+            for c in clauses_theory:
+                solver.add_hard_clause(c)
+        for c in self._additional_theory:
+            print(c)
+            solver.add_hard_clause(c)
 
-        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - After simplification with the theory (c++):", n_nodes_cxx)
+        # excluded features
+        for lit in self._binary_representation:
+            if not self._is_specific(lit):
+                solver.add_hard_clause([-lit])
 
-        if tests is True: 
-            tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, 0)
-            self._tree.delete(self._tree.root)
-            self._tree.root = self._tree.from_tuples(tree_tuples)
-            is_implicant = self.is_implicant(conditions, prediction=label)
-            print("is_implicant after simplify theory ?", is_implicant)
-            if is_implicant is False:
-                raise ValueError("Problem 3")
-        
-        # Simplify part
-        c_explainer.rectifier_simplify_redundant(self.c_rectifier)
-        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - After elimination of redundant nodes (c++):", n_nodes_cxx)
-        
-        # Get the C++ trees and convert it :) 
-        tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, 0)
-        self._tree.delete(self._tree.root)
-        self._tree.root = self._tree.from_tuples(tree_tuples)
-        
-        
-        c_explainer.rectifier_free(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - Final (c++):", self._tree.n_nodes())
-        if tests is True:
-            is_implicant = self.is_implicant(conditions, prediction=label)
-            print("is_implicant after simplify ?", is_implicant)
-            if is_implicant is False:
-                raise ValueError("Problem 4")
-        
-        if self._instance is not None:
-            self.set_instance(self._instance)
+        # Soft clauses
+        for i in range(len(self._binary_representation)):
+            solver.add_soft_clause([-self._binary_representation[i]], 1)
 
-        self._elapsed_time = time.process_time() - current_time
-        
-        Tools.verbose("Rectification time:", self._elapsed_time)
+        # Solving
+        time_used = 0
+        best_score = -1
+        reasons = []
+        first_call = True
 
-        Tools.verbose("--------------")
-        return self._tree
+        while True:
+            status, model, _time = solver.solve(time_limit=None if time_limit is None else time_limit - time_used)
+            time_used += _time
+            if model is None:
+                if first_call:
+                    return ()
+                reasons = Explainer.format(reasons, n)
+                self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                    self.minimal_majoritary_reason.__name__, reasons)
+                return reasons
 
-    def rectify(self, *, conditions, label, cxx=True, tests=False):
+            prefered_reason = [lit for lit in model if lit in self._binary_representation]
+            solver.add_hard_clause([-lit for lit in model if abs(lit) <= max_id_variable])
+
+            # Compute the score
+            score = len(prefered_reason)
+            if first_call:
+                best_score = score
+            elif score != best_score:
+                reasons = Explainer.format(reasons, n)
+                self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                    self.minimal_majoritary_reason.__name__, reasons)
+                return reasons
+            first_call = False
+
+            reasons.append(prefered_reason)
+            if (time_limit is not None and time_used > time_limit) or len(reasons) == n:
+                break
+        self._elapsed_time = time_used if time_limit is None or time_used < time_limit else Explainer.TIMEOUT
+        reasons = Explainer.format(reasons, n)
+        self._visualisation.add_history(self._instance, self.__class__.__name__,self.minimal_majoritary_reason.__name__, reasons)
+        return reasons
+
+    def rectify(self, *, conditions, label):
         """
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
         Simplify the model (the theory can help to eliminate some nodes).
@@ -410,16 +399,9 @@ class ExplainerDT(Explainer):
         Returns:
             DecisionTree: The rectified tree.  
         """
-        if cxx is True:
-            return self.rectify_cxx(conditions=conditions, label=label, tests=tests)
-
         Tools.verbose("")
         Tools.verbose("-------------- Rectification information:")
-
-        is_implicant = self._tree.is_implicant(conditions, label)
-        print("is_implicant before rectification ?", is_implicant)
-
-        tree_decision_rule = self._tree.decision_rule_to_tree(conditions, label)
+        tree_decision_rule = self._tree.decision_rule_to_tree(conditions)
         Tools.verbose("Classification Rule - Number of nodes:", tree_decision_rule.n_nodes())
         Tools.verbose("Model - Number of nodes:", self._tree.n_nodes())
         if label == 1:
@@ -432,22 +414,8 @@ class ExplainerDT(Explainer):
         else:
             raise NotImplementedError("Multiclasses is in progress.")
         
-        print("tree_rectified:", tree_rectified.raw_data_for_CPP())
-        print("label:", label)
-
-        is_implicant = tree_rectified.is_implicant(conditions, label)
-        print("is_implicant after rectification ?", is_implicant)
-        if is_implicant is False:
-            raise ValueError("Problem 2")
-        
         Tools.verbose("Model - Number of nodes (after rectification):", tree_rectified.n_nodes())  
         tree_rectified = self.simplify_theory(tree_rectified)
-
-        is_implicant = tree_rectified.is_implicant(conditions, label)
-        print("is_implicant after rectification ?", is_implicant)
-        if is_implicant is False:
-            raise ValueError("Problem 3")
-        
         Tools.verbose("Model - Number of nodes (after simplification using the theory):", tree_rectified.n_nodes())
         tree_rectified.simplify()
         Tools.verbose("Model - Number of nodes (after elimination of redundant nodes):", tree_rectified.n_nodes())
