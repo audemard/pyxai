@@ -10,6 +10,7 @@ instance, prediction = learner.get_instances(model, n=1, correct=True)
 # Explanation part
 explainer = Explainer.decision_tree(model, instance)
 explainer.add_clause_to_theory([-3, 4])
+print(explainer.get_theory())
 print("instance:", instance)
 print("binary: ", explainer.binary_representation)
 reason = explainer.minimal_majoritary_reason()

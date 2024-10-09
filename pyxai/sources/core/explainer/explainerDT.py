@@ -312,6 +312,10 @@ class ExplainerDT(Explainer):
     def is_reason(self, reason, *, n_samples=-1):
         return self._tree.is_implicant(reason, self.target_prediction)
 
+
+    def get_theory(self):
+        return self.tree.get_theory(self._binary_representation) + self._additional_theory
+
     def minimal_majoritary_reason(self, *, n=1, time_limit=None):
         if self._instance is None:
             raise ValueError("Instance is not set")
@@ -333,12 +337,9 @@ class ExplainerDT(Explainer):
 
         # Theory
         if self._theory:
-            clauses_theory = self.tree.get_theory(self._binary_representation)
+            clauses_theory = self.get_theory()
             for c in clauses_theory:
                 solver.add_hard_clause(c)
-        for c in self._additional_theory:
-            print(c)
-            solver.add_hard_clause(c)
 
         # excluded features
         for lit in self._binary_representation:
