@@ -66,6 +66,7 @@ class ExplainerDT(Explainer):
 
     def add_clause_to_theory(self, clause):
         self._additional_theory.append(clause)
+        self._theory=True
 
     def direct_reason(self):
         """
