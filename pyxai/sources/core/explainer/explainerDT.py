@@ -66,6 +66,7 @@ class ExplainerDT(Explainer):
 
     def add_clause_to_theory(self, clause):
         self._additional_theory.append(clause)
+        self._theory=True
 
     def direct_reason(self):
         """
@@ -272,7 +273,7 @@ class ExplainerDT(Explainer):
         cnf = self._tree.to_CNF(self._instance)
         prime_implicant_cnf = CNFencoding.to_prime_implicant_CNF(cnf, self._binary_representation)
 
-        if self._excluded_features_are_necesssary(prime_implicant_cnf):
+        if self._excluded_features_are_necesssadd_clause_to_theoryary(prime_implicant_cnf):
             self._elapsed_time = 0
             self._n_sufficient_reasons = 0
             return None
@@ -334,12 +335,14 @@ class ExplainerDT(Explainer):
         for c in clauses:
             solver.add_hard_clause(
                 [lit for lit in c if map_abs_implicant[abs(lit)] == lit])
-
+            print("ici",[lit for lit in c if map_abs_implicant[abs(lit)] == lit])
         # Theory
         if self._theory:
+            print("koko")
             clauses_theory = self.get_theory()
             for c in clauses_theory:
                 solver.add_hard_clause(c)
+                print("c",c)
 
         # excluded features
         for lit in self._binary_representation:
