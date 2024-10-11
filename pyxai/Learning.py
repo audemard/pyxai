@@ -18,6 +18,7 @@ K_FOLDS = EvaluationMethod.KFolds
 
 DT = EvaluationOutput.DT
 RF = EvaluationOutput.RF
+RFP = EvaluationOutput.RFP
 BT = EvaluationOutput.BT
 SAVE = EvaluationOutput.SAVE
 

@@ -98,7 +98,7 @@ class LearnerType(Enum):
 
 @unique
 class EvaluationOutput(Enum):
-    DT, RF, BT, SAVE = auto(4)
+    DT, RF, RFP, BT, SAVE = auto(5)
 
 
     def __eq__(self, other):
