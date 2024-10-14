@@ -61,7 +61,7 @@ class ExplainerDT(Explainer):
             for p in propagated:
                 if p != lit and p in binary_representation:
                     present[binary_representation.index(p)] = False
-        print(present)
+        #print(present)
         return [lit for i, lit in enumerate(binary_representation) if present[i]]
 
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False,
