@@ -74,6 +74,12 @@ class ExplainerDT(Explainer):
         Returns:
             _type_: _description_
         """
+        return self._tree.to_features(binary_representation, details=details,
+                                      eliminate_redundant_features=eliminate_redundant_features,
+                                      contrastive=contrastive, without_intervals=without_intervals,
+                                      feature_names=self.get_feature_names())
+        
+        
 
     def add_clause_to_theory(self, clause):
         self._additional_theory.append(clause)
