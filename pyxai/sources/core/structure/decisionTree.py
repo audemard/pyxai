@@ -72,9 +72,30 @@ class DecisionTree(BinaryMapping):
         return (int(self.target_class[0]) if isinstance(self.target_class, (numpy.ndarray, list, tuple)) else self.target_class, raw_t)
 
 
+    def raw_data_for_probas(self):
+        return tuple(["/"+numpy.array2string(self.root.probas,separator=',')[1:-1]+"/"]) if self.root.is_leaf() else self.to_tuples_probas(self.root)
+
     def raw_data(self):
         raw = tuple([self.root.value]) if self.root.is_leaf() else self.to_tuples(self.root)
         return (int(self.n_features), [int(element) for element in self.target_class], raw)
+
+
+    def to_tuples_probas(self, node):
+        """
+        For example, this method can return (1, (2, (2.5,3.5)), (3 (-1.5, 0.5)))
+        for a tree with 3 nodes and the leaves with the weights 2.5 3.5 -1.5 0.5.
+        """
+
+        output = [self.get_id_variable(node)]
+        if not node.left.is_leaf():
+            output.append(self.to_tuples_probas(node.left))
+        else:
+            output.append("/"+numpy.array2string(node.left.probas,separator=',')[1:-1]+"/")
+        if not node.right.is_leaf():
+            output.append(self.to_tuples_probas(node.right))
+        else:
+            output.append("/"+numpy.array2string(node.right.probas,separator=',')[1:-1]+"/")
+        return tuple(output)
 
 
     def to_tuples(self, node, for_cpp=False):

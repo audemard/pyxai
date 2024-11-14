@@ -143,8 +143,9 @@ class Scikitlearn(Learner):
                 id_left = sk_raw_tree.children_left[i]
                 id_right = sk_raw_tree.children_right[i]
 
-                nodes[i].left = nodes[id_left] if id_left in nodes else LeafNode(numpy.argmax(sk_raw_tree.value[id_left][0]))
-                nodes[i].right = nodes[id_right] if id_right in nodes else LeafNode(numpy.argmax(sk_raw_tree.value[id_right][0]))
+
+                nodes[i].left = nodes[id_left] if id_left in nodes else LeafNode(numpy.argmax(sk_raw_tree.value[id_left][0]), probas=sk_raw_tree.value[id_left][0])
+                nodes[i].right = nodes[id_right] if id_right in nodes else LeafNode(numpy.argmax(sk_raw_tree.value[id_right][0]), probas=sk_raw_tree.value[id_right][0])
         
         root = nodes[0] if 0 in nodes else LeafNode(numpy.argmax(sk_raw_tree.value[0][0]))
         return DecisionTree(sk_tree.n_features_in_, root, sk_tree.classes_, id_solver_results=id_solver_results,

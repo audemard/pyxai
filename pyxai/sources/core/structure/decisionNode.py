@@ -4,9 +4,10 @@ from pyxai.sources.core.structure.type import OperatorCondition
 
 
 class LeafNode:
-    def __init__(self, value):
+    def __init__(self, value, *, probas = None):
         self.value = value
         self.parent = None
+        self.probas = probas
 
     def get_reachable_classes(self, reason, target_prediction, map_features_to_id_binaries):
         return set([self.value])

@@ -11,6 +11,10 @@ instance, prediction = learner.get_instances(model, n=1, correct=True)
 explainer = Explainer.decision_tree(model, instance)
 print("instance:", instance)
 
+
+
+exit(1)
+
 if len(explainer.binary_representation) < 15:
     print("binary representation: ", explainer.binary_representation)
 print("prediction:", prediction)
