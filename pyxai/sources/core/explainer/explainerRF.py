@@ -77,6 +77,9 @@ class ExplainerRF(Explainer):
     def predict(self, instance):
         return self._random_forest.predict_instance(instance)
 
+    def predict_probas(self, instance):
+        return self._random_forest.predict_probas(instance)
+
 
     def direct_reason(self):
         """The direct reason of an instance x is the term t of the implicant (binary form of the instance) corresponding to the unique root-to-leaf

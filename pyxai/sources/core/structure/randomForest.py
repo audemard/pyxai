@@ -44,12 +44,29 @@ class RandomForest(TreeEnsembles):
             n_votes[tree.predict_instance(instance)] += 1
         return numpy.argmax(n_votes)
 
+    def get_probas(self, instance):
+        n_votes = numpy.zeros(self.n_classes)
+        for tree in self.forest:
+            p = tree.root.take_decisions_instance(instance, probas=True)
+            for i, v in enumerate(p):
+                n_votes[i] += v
+        for i, v in enumerate(n_votes):
+            n_votes[i] /= len(self.forest)
+        return n_votes
+
+    def predict_probas(self, instance):
+        c = 0
+        proba = self.get_probas(instance)
+        for i,v in enumerate(proba):
+            if v > proba[c]:
+                c = i
+        return c
 
     def predict_implicant(self, implicant):
         """
         Return the prediction (the classification) of an instance according to the trees
         """
-        n_votes = numpy.zeros(self.n_classes)
+        n_votes = [0 for _ in range(self.n_classes)]
         for tree in self.forest:
             n_votes[tree.take_decisions_binary_representation(implicant, self.map_features_to_id_binaries)] += 1
         return numpy.argmax(n_votes)

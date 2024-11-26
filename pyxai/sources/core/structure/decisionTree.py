@@ -399,6 +399,20 @@ class DecisionTree(BinaryMapping):
         """
         return self.root.take_decisions_instance(instance)
 
+
+    def get_probas(self, instance):
+        return self.root.take_decisions_instance(instance, probas=True)
+
+
+    def predict_probas(self, instance):
+        c = 0
+        proba = self.get_probas(instance)
+        for i, v in enumerate(proba):
+            if v > proba[c]:
+                c = i
+        return c
+
+
     def predict_implicant(self, implicant, map_features_to_id_binaries=None):
         return self.take_decisions_binary_representation(implicant, self.map_features_to_id_binaries)
 

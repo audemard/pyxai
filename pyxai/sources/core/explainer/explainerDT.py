@@ -52,6 +52,8 @@ class ExplainerDT(Explainer):
     def predict(self, instance):
         return self._tree.predict_instance(instance)
 
+    def predict_probas(self, instance):
+        return self._tree.predict_probas(instance)
 
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False, without_intervals=False):
         """_summary_

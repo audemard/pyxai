@@ -1,5 +1,7 @@
 import copy
 
+import numpy
+
 from pyxai.sources.core.structure.type import OperatorCondition
 
 
@@ -28,11 +30,14 @@ class LeafNode:
         return False
 
 
-    def take_decisions_binary_representation(self, binary_representation=None, map_features_to_id_binaries=None):
+    def take_decisions_binary_representation(self, binary_representation=None, map_features_to_id_binaries=None ):
+
         return self.value
 
 
-    def take_decisions_instance(self, instance=None):
+    def take_decisions_instance(self, instance=None, *, probas=False):
+        if probas:
+            return self.probas
         return self.value
 
 
@@ -162,7 +167,7 @@ class DecisionNode:
             return self.left.take_decisions_binary_representation(binary_representation, map_features_to_id_binaries)
 
 
-    def take_decisions_instance(self, instance):
+    def take_decisions_instance(self, instance, *, probas=False):
         """
         Return the prediction (the classification) of an observation (instance) according to this node.
         This return value is either 0 or 1: 0 for the first (boolean) prediction value, 1 for the second one.
@@ -175,33 +180,33 @@ class DecisionNode:
         
         if self.operator == OperatorCondition.GE:
             if instance[self.id_feature - 1] >= self.threshold:
-                return self.right.take_decisions_instance(instance)
+                return self.right.take_decisions_instance(instance, probas=probas)
             else:
-                return self.left.take_decisions_instance(instance)
+                return self.left.take_decisions_instance(instance, probas=probas)
         elif self.operator == OperatorCondition.GT:
             if instance[self.id_feature - 1] > self.threshold:
-                return self.right.take_decisions_instance(instance)
+                return self.right.take_decisions_instance(instance, probas=probas)
             else:
-                return self.left.take_decisions_instance(instance)
+                return self.left.take_decisions_instance(instance, probas=probas)
         elif self.operator == OperatorCondition.LE:
             if instance[self.id_feature - 1] <= self.threshold:
-                return self.right.take_decisions_instance(instance)
+                return self.right.take_decisions_instance(instance, probas=probas)
             else:
-                return self.left.take_decisions_instance(instance)
+                return self.left.take_decisions_instance(instance, probas=probas)
         elif self.operator == OperatorCondition.LT:
             if instance[self.id_feature - 1] < self.threshold:
-                return self.right.take_decisions_instance(instance)
+                return self.right.take_decisions_instance(instance, probas=probas)
             else:
-                return self.left.take_decisions_instance(instance)
+                return self.left.take_decisions_instance(instance, probas=probas)
         elif self.operator == OperatorCondition.EQ:
             if instance[self.id_feature - 1] == self.threshold:
-                return self.right.take_decisions_instance(instance)
+                return self.right.take_decisions_instance(instance, probas=probas)
             else:
-                return self.left.take_decisions_instance(instance)
+                return self.left.take_decisions_instance(instance, probas=probas)
         elif self.operator == OperatorCondition.NEQ:
             if instance[self.id_feature - 1] != self.threshold:
-                return self.right.take_decisions_instance(instance)
+                return self.right.take_decisions_instance(instance, probas=probas)
             else:
-                return self.left.take_decisions_instance(instance)
+                return self.left.take_decisions_instance(instance, probas=probas)
         else:
             raise NotImplementedError("The operator " + str(self.operator) + " is not implemented.")
