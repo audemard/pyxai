@@ -277,7 +277,8 @@ class Explainer:
         Tools.verbose("")
         Tools.verbose("Number of used features in the model (before the encoding of categorical features):",
                       len(used_features_without_one_hot_encoded))
-        Tools.verbose("Number of used features in the model (after the encoding of categorical features):", len(used_features))
+        Tools.verbose("Number of used features in the model (after the encoding of categorical features):",
+                      len(used_features))
         Tools.verbose("----------------------------------------------")
 
     def _theory_clauses(self):
@@ -408,7 +409,7 @@ class Explainer:
             return reason
         if self._glucose is None:
             self._glucose = GlucoseSolver()
-            self._glucose.add_clauses(self.get_model().get_theory(self._binary_representation))
+            self._glucose.add_clauses(self.get_theory())
         return self._glucose.propagate(reason)[1]
 
     def is_reason(self, reason, *, n_samples=1000):
@@ -599,14 +600,14 @@ class Explainer:
             self.last_n_anchors = 0
 
         return None if previous_reason is None else Explainer.format(previous_reason)
-    
+
     def simplify_theory(self, tree):
         if self._theory is True:
             solver = GlucoseSolver()
             theory_cnf = self.get_model().get_theory(None)
             return solver.symplify_theory(tree, theory_cnf)
         return tree
-    
+
     @property
     def visualisation(self):
         """This object allows to open gui, save images, and so on

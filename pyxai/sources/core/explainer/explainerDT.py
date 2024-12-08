@@ -4,13 +4,14 @@ import numpy
 
 from pyxai.sources.core.explainer.Explainer import Explainer
 from pyxai.sources.core.structure.decisionTree import DecisionTree
-from pyxai.sources.core.structure.type import PreferredReasonMethod, TypeTheory
+from pyxai.sources.core.structure.type import PreferredReasonMethod, TypeTheory, ReasonExpressivity
 from pyxai.sources.core.tools.encoding import CNFencoding
 from pyxai.sources.core.tools.utils import compute_weight
 from pyxai.sources.solvers.COMPILER.D4Solver import D4Solver
 from pyxai.sources.solvers.MAXSAT.OPENWBOSolver import OPENWBOSolver
 from pyxai.sources.solvers.SAT.glucoseSolver import GlucoseSolver
 from pyxai import Tools
+import c_explainer
 
 
 class ExplainerDT(Explainer):
@@ -25,6 +26,7 @@ class ExplainerDT(Explainer):
         super().__init__()
         self._tree = tree  # The decision _tree.
         self._additional_theory = []
+        self.c_RF = None
         if instance is not None:
             self.set_instance(instance)
 
@@ -61,7 +63,7 @@ class ExplainerDT(Explainer):
             for p in propagated:
                 if p != lit and p in binary_representation:
                     present[binary_representation.index(p)] = False
-        #print(present)
+        # print(present)
         return [lit for i, lit in enumerate(binary_representation) if present[i]]
 
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False,
@@ -78,11 +80,9 @@ class ExplainerDT(Explainer):
                                       eliminate_redundant_features=eliminate_redundant_features,
                                       contrastive=contrastive, without_intervals=without_intervals,
                                       feature_names=self.get_feature_names())
-        
-        
 
     def add_clause_to_theory(self, clause):
-        self._additional_theory.append(clause)
+        self._additional_theory.append(tuple(clause))
         self._theory = True
 
     def direct_reason(self):
@@ -190,96 +190,37 @@ class ExplainerDT(Explainer):
                                         reasons)
         return reasons
 
-    def preferred_sufficient_reason(self, *, method, n=1, time_limit=None, weights=None, features_partition=None):
+    def sufficient_theory_reason(self, *, n_iterations=50, time_limit=None, seed=0):
         if self._instance is None:
             raise ValueError("Instance is not set")
-        n = n if type(n) == int else float('inf')
-        cnf = self._tree.to_CNF(self._instance)
-        self._elapsed_time = 0
+        print(self.get_theory())
+        if seed is None: seed = -1
+        if self.c_RF is None:
+            # Preprocessing to give all trees in the c++ library
+            self.c_RF = c_explainer.new_classifier_RF(len(self._tree.target_class))
 
-        prime_implicant_cnf = CNFencoding.to_prime_implicant_CNF(cnf, self._binary_representation)
+            try:
+                c_explainer.add_tree(self.c_RF, self._tree.raw_data_for_CPP())
+            except Exception as e:
+                print("Erreur", str(e))
+                exit(1)
 
-        # excluded are necessary => no reason
-        if self._excluded_features_are_necesssary(prime_implicant_cnf):
-            return None
+        if time_limit is None:
+            time_limit = 0
+        implicant_id_features = ()  # FEATURES : TODO
+        c_explainer.set_excluded(self.c_RF, tuple(self._excluded_literals))
+        if self._theory:
+            c_explainer.set_theory(self.c_RF, tuple(self.get_theory()))
+        current_time = time.process_time()
+        reason = c_explainer.compute_reason(self.c_RF, self._binary_representation, implicant_id_features,
+                                            self.target_prediction, n_iterations,
+                                            time_limit, int(ReasonExpressivity.Conditions), seed)
+        total_time = time.process_time() - current_time
+        self._elapsed_time = total_time if time_limit == 0 or total_time < time_limit else Explainer.TIMEOUT
 
-        cnf = prime_implicant_cnf.cnf
-        if len(cnf) == 0:
-            reasons = Explainer.format([[lit for lit in prime_implicant_cnf.necessary]], n=n)
-            if method == PreferredReasonMethod.Minimal:
-                self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                                self.minimal_sufficient_reason.__name__, reasons)
-            else:
-                self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                                self.preferred_sufficient_reason.__name__, reasons)
-            return reasons
+        reason = Explainer.format(reason)
 
-        weights = compute_weight(method, self._instance, weights, self._tree.learner_information,
-                                 features_partition=features_partition)
-        weights_per_feature = {i + 1: weight for i, weight in enumerate(weights)}
-
-        soft = [lit for lit in prime_implicant_cnf.mapping_original_to_new if lit != 0]
-        weights_soft = []
-        for lit in soft:  # soft clause
-            for i in range(len(self._instance)):
-                # if self.to_features([lit], eliminate_redundant_features=False, details=True)[0]["id"] == i + 1:
-
-                if self._tree.get_id_features([lit])[0] == i + 1:
-                    weights_soft.append(weights[i])
-
-        solver = OPENWBOSolver()
-
-        # Hard clauses
-        solver.add_hard_clauses(cnf)
-
-        # Soft clauses
-        for i in range(len(soft)):
-            solver.add_soft_clause([-soft[i]], weights_soft[i])
-
-        # Remove excluded features
-        for lit in self._excluded_literals:
-            if prime_implicant_cnf.from_original_to_new(lit) is not None:
-                solver.add_hard_clause([-prime_implicant_cnf.from_original_to_new(lit)])
-
-        # Solving
-        time_used = 0
-        best_score = -1
-        reasons = []
-        first_call = True
-
-        while True:
-            status, model, _time = solver.solve(time_limit=0 if time_limit is None else time_limit - time_used)
-            time_used += _time
-            if model is None:
-                break
-
-            preferred = prime_implicant_cnf.get_reason_from_model(model)
-            solver.add_hard_clause(prime_implicant_cnf.get_blocking_clause(model))
-            # Compute the score
-            # score = sum([weights_per_feature[feature["id"]] for feature in
-            #             self.to_features(preferred, eliminate_redundant_features=False, details=True)])
-
-            score = sum([weights_per_feature[id_feature] for id_feature in self._tree.get_id_features(preferred)])
-            if first_call:
-                best_score = score
-            elif score != best_score:
-                break
-            first_call = False
-            reasons.append(preferred)
-            if (time_limit is not None and time_used > time_limit) or len(reasons) == n:
-                break
-        self._elapsed_time = time_used if time_limit is None or time_used < time_limit else Explainer.TIMEOUT
-        reasons = Explainer.format(reasons, n)
-        if method == PreferredReasonMethod.Minimal:
-            self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                            self.minimal_sufficient_reason.__name__, reasons)
-        else:
-            self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                            self.preferred_sufficient_reason.__name__, reasons)
-        return reasons
-
-    def minimal_sufficient_reason(self, *, n=1, time_limit=None):
-        return self.preferred_sufficient_reason(method=PreferredReasonMethod.Minimal, n=n, time_limit=time_limit)
+        return reason
 
     def n_sufficient_reasons(self, time_limit=None):
         self.n_sufficient_reasons_per_attribute(time_limit=time_limit)
@@ -328,7 +269,8 @@ class ExplainerDT(Explainer):
         return n_sufficients_per_attribute
 
     def is_reason(self, reason, *, n_samples=-1):
-        return self._tree.is_implicant(reason, self.target_prediction)
+        extended = self.extend_reason_with_theory(reason)
+        return self._tree.is_implicant(extended, self.target_prediction)
 
     def get_theory(self):
         return self.tree.get_theory(self._binary_representation) + self._additional_theory
