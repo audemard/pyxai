@@ -214,7 +214,7 @@ class ExplainerDT(Explainer):
         current_time = time.process_time()
         reason = c_explainer.compute_reason(self.c_RF, self._binary_representation, implicant_id_features,
                                             self.target_prediction, n_iterations,
-                                            time_limit, int(ReasonExpressivity.Conditions), seed)
+                                            time_limit, int(ReasonExpressivity.Conditions), seed, 0)
         total_time = time.process_time() - current_time
         self._elapsed_time = total_time if time_limit == 0 or total_time < time_limit else Explainer.TIMEOUT
 
