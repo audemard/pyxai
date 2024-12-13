@@ -44,7 +44,7 @@
 # print("is reason", explainer.is_reason(reason))
 
 
-name = '../../dataset/balance_0_vs_1'
+name = '../../dataset/balance-scale_0_vs_1'
 
 from pyxai import Learning, Explainer, Tools
 
@@ -58,7 +58,7 @@ instance, prediction = learner.get_instances(model, n=1, correct=True)
 explainer = Explainer.initialize(model, instance, features_type=name + '.types')
 # explainer.add_clause_to_theory([1, -2])
 # explainer.add_clause_to_theory([2, -3])
-explainer.add_clause_to_theory([-3, -4, -5])
+explainer.add_clause_to_theory([3, -4])
 print(explainer.get_theory())
 print("instance:", instance)
 print("binary: ", explainer.binary_representation)

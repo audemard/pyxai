@@ -405,6 +405,7 @@ class Explainer:
         Given a partial binary representation, extend it in order to validate the theory.
 
         """
+        print("edrfe")
         if self._theory is False:
             return reason
         if self._glucose is None:
@@ -421,7 +422,6 @@ class Explainer:
         @param n_samples: (int) the number of tests to be done.
         @return: True if the reason is really one reason, False otherwise.
         """
-
         for _ in range(n_samples):
             binary_representation = self.extend_reason_to_complete_representation(reason)
             if not self.is_implicant(binary_representation):

@@ -1,7 +1,5 @@
 import time
 
-import numpy
-
 from pyxai.sources.core.explainer.Explainer import Explainer
 from pyxai.sources.core.structure.decisionTree import DecisionTree
 from pyxai.sources.core.structure.type import PreferredReasonMethod, TypeTheory, ReasonExpressivity
@@ -11,6 +9,7 @@ from pyxai.sources.solvers.COMPILER.D4Solver import D4Solver
 from pyxai.sources.solvers.MAXSAT.OPENWBOSolver import OPENWBOSolver
 from pyxai.sources.solvers.SAT.glucoseSolver import GlucoseSolver
 from pyxai import Tools
+
 import c_explainer
 
 
@@ -25,10 +24,11 @@ class ExplainerDT(Explainer):
         """
         super().__init__()
         self._tree = tree  # The decision _tree.
-        self._additional_theory = []
-        self.c_RF = None
         if instance is not None:
             self.set_instance(instance)
+        self.c_rectifier = None
+        self._additional_theory = []
+        self.c_RF = None
 
     @property
     def tree(self):
@@ -42,8 +42,11 @@ class ExplainerDT(Explainer):
     def _to_binary_representation(self, instance):
         return self._tree.instance_to_binaries(instance)
 
-    def is_implicant(self, binary_representation):
-        return self._tree.is_implicant(binary_representation, self.target_prediction)
+    def is_implicant(self, binary_representation, *, prediction=None):
+        if prediction is None:
+            prediction = self.target_prediction
+        binary_representation = self.extend_reason_with_theory(binary_representation)
+        return self._tree.is_implicant(binary_representation, prediction)
 
     def predict(self, instance):
         return self._tree.predict_instance(instance)
@@ -66,6 +69,7 @@ class ExplainerDT(Explainer):
         # print(present)
         return [lit for i, lit in enumerate(binary_representation) if present[i]]
 
+
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False,
                     without_intervals=False):
         """_summary_
@@ -81,9 +85,13 @@ class ExplainerDT(Explainer):
                                       contrastive=contrastive, without_intervals=without_intervals,
                                       feature_names=self.get_feature_names())
 
+
     def add_clause_to_theory(self, clause):
         self._additional_theory.append(tuple(clause))
         self._theory = True
+        self.c_rectifier = None
+        self.c_RF = None
+
 
     def direct_reason(self):
         """
@@ -222,6 +230,107 @@ class ExplainerDT(Explainer):
 
         return reason
 
+
+    def is_reason(self, reason, *, n_samples=-1):
+        extended = self.extend_reason_with_theory(reason)
+        return self._tree.is_implicant(extended, self.target_prediction)
+
+    def get_theory(self):
+        return self.tree.get_theory(self._binary_representation) + self._additional_theory
+
+    def preferred_sufficient_reason(self, *, method, n=1, time_limit=None, weights=None, features_partition=None):
+        if self._instance is None:
+            raise ValueError("Instance is not set")
+        n = n if type(n) == int else float('inf')
+        cnf = self._tree.to_CNF(self._instance)
+        self._elapsed_time = 0
+
+        prime_implicant_cnf = CNFencoding.to_prime_implicant_CNF(cnf, self._binary_representation)
+
+        # excluded are necessary => no reason
+        if self._excluded_features_are_necesssary(prime_implicant_cnf):
+            return None
+
+        cnf = prime_implicant_cnf.cnf
+        if len(cnf) == 0:
+            reasons = Explainer.format([[lit for lit in prime_implicant_cnf.necessary]], n=n)
+            if method == PreferredReasonMethod.Minimal:
+                self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                self.minimal_sufficient_reason.__name__, reasons)
+            else:
+                self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                self.preferred_sufficient_reason.__name__, reasons)
+            return reasons
+
+        weights = compute_weight(method, self._instance, weights, self._tree.learner_information,
+                                 features_partition=features_partition)
+        weights_per_feature = {i + 1: weight for i, weight in enumerate(weights)}
+
+        soft = [lit for lit in prime_implicant_cnf.mapping_original_to_new if lit != 0]
+        weights_soft = []
+        for lit in soft:  # soft clause
+            for i in range(len(self._instance)):
+                # if self.to_features([lit], eliminate_redundant_features=False, details=True)[0]["id"] == i + 1:
+
+                if self._tree.get_id_features([lit])[0] == i + 1:
+                    weights_soft.append(weights[i])
+
+        solver = OPENWBOSolver()
+
+        # Hard clauses
+        solver.add_hard_clauses(cnf)
+
+        # Soft clauses
+        for i in range(len(soft)):
+            solver.add_soft_clause([-soft[i]], weights_soft[i])
+
+        # Remove excluded features
+        for lit in self._excluded_literals:
+            if prime_implicant_cnf.from_original_to_new(lit) is not None:
+                solver.add_hard_clause([-prime_implicant_cnf.from_original_to_new(lit)])
+
+        # Solving
+        time_used = 0
+        best_score = -1
+        reasons = []
+        first_call = True
+
+        while True:
+            status, model, _time = solver.solve(time_limit=0 if time_limit is None else time_limit - time_used)
+            time_used += _time
+            if model is None:
+                break
+
+            preferred = prime_implicant_cnf.get_reason_from_model(model)
+            solver.add_hard_clause(prime_implicant_cnf.get_blocking_clause(model))
+            # Compute the score
+            # score = sum([weights_per_feature[feature["id"]] for feature in
+            #             self.to_features(preferred, eliminate_redundant_features=False, details=True)])
+
+            score = sum([weights_per_feature[id_feature] for id_feature in self._tree.get_id_features(preferred)])
+            if first_call:
+                best_score = score
+            elif score != best_score:
+                break
+            first_call = False
+            reasons.append(preferred)
+            if (time_limit is not None and time_used > time_limit) or len(reasons) == n:
+                break
+        self._elapsed_time = time_used if time_limit is None or time_used < time_limit else Explainer.TIMEOUT
+        reasons = Explainer.format(reasons, n)
+        if method == PreferredReasonMethod.Minimal:
+            self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                            self.minimal_sufficient_reason.__name__, reasons)
+        else:
+            self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                            self.preferred_sufficient_reason.__name__, reasons)
+        return reasons
+
+
+    def minimal_sufficient_reason(self, *, n=1, time_limit=None):
+        return self.preferred_sufficient_reason(method=PreferredReasonMethod.Minimal, n=n, time_limit=time_limit)
+
+
     def n_sufficient_reasons(self, time_limit=None):
         self.n_sufficient_reasons_per_attribute(time_limit=time_limit)
         return self._n_sufficient_reasons
@@ -232,7 +341,7 @@ class ExplainerDT(Explainer):
         cnf = self._tree.to_CNF(self._instance)
         prime_implicant_cnf = CNFencoding.to_prime_implicant_CNF(cnf, self._binary_representation)
 
-        if self._excluded_features_are_necesssadd_clause_to_theoryary(prime_implicant_cnf):
+        if self._excluded_features_are_necesssary(prime_implicant_cnf):
             self._elapsed_time = 0
             self._n_sufficient_reasons = 0
             return None
@@ -268,116 +377,141 @@ class ExplainerDT(Explainer):
 
         return n_sufficients_per_attribute
 
-    def is_reason(self, reason, *, n_samples=-1):
-        extended = self.extend_reason_with_theory(reason)
-        return self._tree.is_implicant(extended, self.target_prediction)
 
-    def get_theory(self):
-        return self.tree.get_theory(self._binary_representation) + self._additional_theory
+    def rectify_cxx(self, *, conditions, label, tests=False):
+        """
+        C++ version
+        Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
+        Simplify the model (the theory can help to eliminate some nodes).
+        """
 
-    def minimal_majoritary_reason(self, *, n=1, time_limit=None):
-        if self._instance is None:
-            raise ValueError("Instance is not set")
+        # check conditions and return a list of literals
 
-        n = n if type(n) == int else float('inf')
+        conditions, change = self._tree.parse_conditions_for_rectify(conditions)
+        if change is True and self._last_features_types is not None:
+            self.set_features_type(self._last_features_types)
 
-        clauses = self.tree.to_CNF(self._instance, self.target_prediction, format=False)
+        current_time = time.process_time()
+        if self.c_rectifier is None:
+            self.c_rectifier = c_explainer.new_rectifier()
 
-        solver = OPENWBOSolver()
-        max_id_variable = len(self.binary_representation)
-        map_abs_implicant = [0 for _ in range(0, max_id_variable + 1)]
-        for lit in self._binary_representation:
-            map_abs_implicant[abs(lit)] = lit
-        # Hard clauses
-        for c in clauses:
-            solver.add_hard_clause(
-                [lit for lit in c if map_abs_implicant[abs(lit)] == lit])
-            print("ici", [lit for lit in c if map_abs_implicant[abs(lit)] == lit])
-        # Theory
-        if self._theory:
-            print("koko")
-            clauses_theory = self.get_theory()
-            for c in clauses_theory:
-                solver.add_hard_clause(c)
-                print("c", c)
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant ?", is_implicant)
 
-        # excluded features
-        for lit in self._binary_representation:
-            if not self._is_specific(lit):
-                solver.add_hard_clause([-lit])
+        c_explainer.rectifier_add_tree(self.c_rectifier, self._tree.raw_data_for_CPP())
+        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - Initial (c++):", n_nodes_cxx)
 
-        # Soft clauses
-        for i in range(len(self._binary_representation)):
-            solver.add_soft_clause([-self._binary_representation[i]], 1)
+        # Rectification part
+        c_explainer.rectifier_improved_rectification(self.c_rectifier, conditions, label)
+        n_nodes_ccx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After rectification (c++):", n_nodes_ccx)
+        if tests is True:
 
-        # Solving
-        time_used = 0
-        best_score = -1
-        reasons = []
-        first_call = True
+            # for i in range(len(self._random_forest.forest)):
+            tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, 0)
+            self._tree.delete(self._tree.root)
+            self._tree.root = self._tree.from_tuples(tree_tuples)
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after rectification ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 2")
 
-        while True:
-            status, model, _time = solver.solve(time_limit=None if time_limit is None else time_limit - time_used)
-            time_used += _time
-            if model is None:
-                if first_call:
-                    return ()
-                reasons = Explainer.format(reasons, n)
-                self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                                self.minimal_majoritary_reason.__name__, reasons)
-                return reasons
+        # Simplify Theory part
+        theory_cnf = self.get_model().get_theory(None)
+        c_explainer.rectifier_set_theory(self.c_rectifier, tuple(theory_cnf))
+        c_explainer.rectifier_simplify_theory(self.c_rectifier)
 
-            prefered_reason = [lit for lit in model if lit in self._binary_representation]
-            solver.add_hard_clause([-lit for lit in model if abs(lit) <= max_id_variable])
+        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After simplification with the theory (c++):", n_nodes_cxx)
 
-            # Compute the score
-            score = len(prefered_reason)
-            if first_call:
-                best_score = score
-            elif score != best_score:
-                reasons = Explainer.format(reasons, n)
-                self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                                self.minimal_majoritary_reason.__name__, reasons)
-                return reasons
-            first_call = False
+        if tests is True:
+            tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, 0)
+            self._tree.delete(self._tree.root)
+            self._tree.root = self._tree.from_tuples(tree_tuples)
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after simplify theory ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 3")
 
-            reasons.append(prefered_reason)
-            if (time_limit is not None and time_used > time_limit) or len(reasons) == n:
-                break
-        self._elapsed_time = time_used if time_limit is None or time_used < time_limit else Explainer.TIMEOUT
-        reasons = Explainer.format(reasons, n)
-        self._visualisation.add_history(self._instance, self.__class__.__name__,
-                                        self.minimal_majoritary_reason.__name__, reasons)
-        return reasons
+        # Simplify part
+        c_explainer.rectifier_simplify_redundant(self.c_rectifier)
+        n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After elimination of redundant nodes (c++):", n_nodes_cxx)
 
-    def rectify(self, *, conditions, label):
+        # Get the C++ trees and convert it :)
+        tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, 0)
+        self._tree.delete(self._tree.root)
+        self._tree.root = self._tree.from_tuples(tree_tuples)
+
+        c_explainer.rectifier_free(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - Final (c++):", self._tree.n_nodes())
+        if tests is True:
+            is_implicant = self.is_implicant(conditions, prediction=label)
+            print("is_implicant after simplify ?", is_implicant)
+            if is_implicant is False:
+                raise ValueError("Problem 4")
+
+        if self._instance is not None:
+            self.set_instance(self._instance)
+
+        self._elapsed_time = time.process_time() - current_time
+
+        Tools.verbose("Rectification time:", self._elapsed_time)
+
+        Tools.verbose("--------------")
+        return self._tree
+
+    def rectify(self, *, conditions, label, cxx=True, tests=False):
         """
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
         Simplify the model (the theory can help to eliminate some nodes).
 
         Args:
-            decision_rule (list or tuple): A decision rule in the form of list of literals (binary variables representing the conditions of the tree). 
-            label (int): The label of the decision rule.   
+            decision_rule (list or tuple): A decision rule in the form of list of literals (binary variables representing the conditions of the tree).
+            label (int): The label of the decision rule.
         Returns:
-            DecisionTree: The rectified tree.  
+            DecisionTree: The rectified tree.
         """
+        if cxx is True:
+            return self.rectify_cxx(conditions=conditions, label=label, tests=tests)
+
         Tools.verbose("")
         Tools.verbose("-------------- Rectification information:")
-        tree_decision_rule = self._tree.decision_rule_to_tree(conditions)
+
+        is_implicant = self._tree.is_implicant(conditions, label)
+        print("is_implicant before rectification ?", is_implicant)
+
+        tree_decision_rule = self._tree.decision_rule_to_tree(conditions, label)
         Tools.verbose("Classification Rule - Number of nodes:", tree_decision_rule.n_nodes())
         Tools.verbose("Model - Number of nodes:", self._tree.n_nodes())
         if label == 1:
-            # When label is 1, we have to inverse the decision rule and disjoint the two trees.  
+            # When label is 1, we have to inverse the decision rule and disjoint the two trees.
             tree_decision_rule = tree_decision_rule.negating_tree()
             tree_rectified = self._tree.disjoint_tree(tree_decision_rule)
         elif label == 0:
-            # When label is 0, we have to concatenate the two trees.  
+            # When label is 0, we have to concatenate the two trees.
             tree_rectified = self._tree.concatenate_tree(tree_decision_rule)
         else:
             raise NotImplementedError("Multiclasses is in progress.")
 
+        print("tree_rectified:", tree_rectified.raw_data_for_CPP())
+        print("label:", label)
+
+        is_implicant = tree_rectified.is_implicant(conditions, label)
+        print("is_implicant after rectification ?", is_implicant)
+        if is_implicant is False:
+            raise ValueError("Problem 2")
+
         Tools.verbose("Model - Number of nodes (after rectification):", tree_rectified.n_nodes())
         tree_rectified = self.simplify_theory(tree_rectified)
+
+        is_implicant = tree_rectified.is_implicant(conditions, label)
+        print("is_implicant after rectification ?", is_implicant)
+        if is_implicant is False:
+            raise ValueError("Problem 3")
+
         Tools.verbose("Model - Number of nodes (after simplification using the theory):", tree_rectified.n_nodes())
         tree_rectified.simplify()
         Tools.verbose("Model - Number of nodes (after elimination of redundant nodes):", tree_rectified.n_nodes())
@@ -412,3 +546,5 @@ class ExplainerDT(Explainer):
         n_variables = CNFencoding.compute_n_variables(cnf)
         return self._anchored_reason(n_variables=n_variables, cnf=cnf, n_anchors=n_anchors,
                                      reference_instances=reference_instances, time_limit=time_limit, check=check)
+
+
