@@ -82,7 +82,7 @@ class DecisionTree(BinaryMapping):
 
     def _depth(self, node):
         if node.is_leaf():
-            return 1  
+            return 0
         left_depth = self._depth(node.left)
         right_depth = self._depth(node.right)
         return max(left_depth, right_depth) + 1

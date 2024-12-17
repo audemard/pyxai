@@ -377,8 +377,10 @@ class ExplainerDT(Explainer):
 
         return n_sufficients_per_attribute
 
-
-    def rectify_cxx(self, *, conditions, label, tests=False):
+    def condi(self, *, conditions):
+        conditions, change = self._tree.parse_conditions_for_rectify(conditions)
+        return conditions
+    def rectify_cxx(self, *, conditions, label, tests=False,theory_cnf=None):
         """
         C++ version
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
@@ -419,7 +421,10 @@ class ExplainerDT(Explainer):
                 raise ValueError("Problem 2")
 
         # Simplify Theory part
-        theory_cnf = self.get_model().get_theory(None)
+        if theory_cnf is None:
+            theory_cnf = self.get_model().get_theory(None)
+        else:
+            print("my theorie")
         c_explainer.rectifier_set_theory(self.c_rectifier, tuple(theory_cnf))
         c_explainer.rectifier_simplify_theory(self.c_rectifier)
 
@@ -463,7 +468,7 @@ class ExplainerDT(Explainer):
         Tools.verbose("--------------")
         return self._tree
 
-    def rectify(self, *, conditions, label, cxx=True, tests=False):
+    def rectify(self, *, conditions, label, cxx=True, tests=False,theory_cnf=None):
         """
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
         Simplify the model (the theory can help to eliminate some nodes).
@@ -475,7 +480,7 @@ class ExplainerDT(Explainer):
             DecisionTree: The rectified tree.
         """
         if cxx is True:
-            return self.rectify_cxx(conditions=conditions, label=label, tests=tests)
+            return self.rectify_cxx(conditions=conditions, label=label, tests=tests,theory_cnf=theory_cnf)
 
         Tools.verbose("")
         Tools.verbose("-------------- Rectification information:")
