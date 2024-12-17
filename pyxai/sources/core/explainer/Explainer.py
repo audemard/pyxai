@@ -2,6 +2,8 @@ import random
 import json
 from typing import Iterable
 
+from numpy.f2py.auxfuncs import throw_error
+
 from pyxai.sources.core.explainer.Visualisation import Visualisation
 from pyxai.sources.core.tools.utils import count_dimensions
 from pyxai.sources.core.structure.type import TypeFeature, OperatorCondition
@@ -26,6 +28,9 @@ class Explainer:
         self._glucose = None
         self._reference_instances = None
         self._last_features_types = None
+
+    def get_theory(self):
+        raise NotImplementedError("")
 
     def get_model(self):
         """
@@ -405,7 +410,6 @@ class Explainer:
         Given a partial binary representation, extend it in order to validate the theory.
 
         """
-        print("edrfe")
         if self._theory is False:
             return reason
         if self._glucose is None:

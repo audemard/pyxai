@@ -31,14 +31,23 @@ class ExplainerRF(Explainer):
         self._random_forest = random_forest
         self.c_RF = None
         self.c_rectifier = None
-
+        self._additional_theory = []
         if instance is not None:
             self.set_instance(instance)
+
 
 
     @property
     def random_forest(self):
         return self._random_forest
+
+    def get_theory(self):
+        return self._random_forest.get_theory(self._binary_representation) + self._additional_theory
+
+    def add_clause_to_theory(self, clause):
+        self._additional_theory.append(tuple(clause))
+        self._theory = True
+        self.c_RF = None
 
 
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False, without_intervals=False):
@@ -160,6 +169,7 @@ class ExplainerRF(Explainer):
                 MAXSATsolver.add_soft_clause([lit], weight=1)
         else:
             # Hard clauses
+            raise NotImplementedError("TODO get theory")
             theory_cnf, theory_new_variables = self._random_forest.get_theory(
                 self._binary_representation,
                 theory_type=TypeTheory.NEW_VARIABLES,
@@ -237,7 +247,7 @@ class ExplainerRF(Explainer):
                                                                                       self.target_prediction)
 
         if self._theory:
-            hard_clauses = hard_clauses + tuple(self._random_forest.get_theory(self._binary_representation))
+            hard_clauses = hard_clauses + tuple(self.get_theory())
 
         # Check if excluded features produce a SAT problem => No sufficient reason
         if len(self._excluded_literals) > 0:
@@ -290,7 +300,7 @@ class ExplainerRF(Explainer):
                                                                                       self.target_prediction)
 
         if self._theory:
-            clauses_theory = self._random_forest.get_theory(self._binary_representation)
+            clauses_theory = self.get_theory()
             hard_clauses = hard_clauses + tuple(clauses_theory)
 
         if len(self._excluded_literals) > 0:
@@ -343,7 +353,7 @@ class ExplainerRF(Explainer):
             implicant_id_features = ()  # FEATURES : TODO
             c_explainer.set_excluded(self.c_RF, tuple(self._excluded_literals))
             if self._theory:
-                c_explainer.set_theory(self.c_RF, tuple(self._random_forest.get_theory(self._binary_representation)))
+                c_explainer.set_theory(self.c_RF, tuple(self.get_theory()))
             current_time = time.process_time()
             reason = c_explainer.compute_reason(self.c_RF, self._binary_representation, implicant_id_features, self.target_prediction, n_iterations,
                                                 time_limit, int(reason_expressivity), seed, 0)
@@ -440,7 +450,7 @@ class ExplainerRF(Explainer):
             solver.add_hard_clause([lit for lit in c if abs(lit) > max_id_variable or map_abs_implicant[abs(lit)] == lit])
 
         if self._theory:
-            clauses_theory = self._random_forest.get_theory(self._binary_representation)
+            clauses_theory = self.get_theory()
             for c in clauses_theory:
                 solver.add_hard_clause(c)
 
@@ -528,7 +538,7 @@ class ExplainerRF(Explainer):
             cnf = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction, tree_encoding=Encoding.MUS)
             if self._theory:
                 size = len(cnf)
-                clauses_theory = self._random_forest.get_theory(self._binary_representation)
+                clauses_theory = self.get_theory()
                 cnf = cnf + tuple(clauses_theory)
                 print("Theory enabled: clauses: "+ str(size) + " to " + str(len(cnf)))
                 
@@ -593,7 +603,7 @@ class ExplainerRF(Explainer):
         
 
         # Simplify Theory part
-        theory_cnf = self.get_model().get_theory(None)
+        theory_cnf = self.get_theory()
         c_explainer.rectifier_set_theory(self.c_rectifier, tuple(theory_cnf))
         c_explainer.rectifier_simplify_theory(self.c_rectifier)
 
