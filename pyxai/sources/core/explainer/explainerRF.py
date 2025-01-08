@@ -14,6 +14,7 @@ from pyxai.sources.solvers.MUS.OPTUXSolver import OPTUXSolver
 from pyxai.sources.solvers.SAT.glucoseSolver import GlucoseSolver
 from pyxai import Tools
 
+
 class ExplainerRF(Explainer):
 
     def __init__(self, random_forest, instance=None):
@@ -35,8 +36,6 @@ class ExplainerRF(Explainer):
         if instance is not None:
             self.set_instance(instance)
 
-
-
     @property
     def random_forest(self):
         return self._random_forest
@@ -48,12 +47,10 @@ class ExplainerRF(Explainer):
         self._additional_theory.append(tuple(clause))
         self._theory = True
         self.c_RF = None
+        self._glucose = None
 
-
-
-
-
-    def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False, without_intervals=False):
+    def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False,
+                    without_intervals=False):
         """
         Convert each literal of the implicant (representing a condition) to a tuple (``id_feature``, ``threshold``, ``sign``, ``weight``).
           - ``id_feature``: the feature identifier.
@@ -70,15 +67,17 @@ class ExplainerRF(Explainer):
             obj:`tuple` of :obj:`tuple` of size 4: Represent the reason in the form of features (with their respective thresholds, signs and possible
             weights)
         """
-        return self._random_forest.to_features(binary_representation, eliminate_redundant_features=eliminate_redundant_features, details=details,
-                                               contrastive=contrastive, without_intervals=without_intervals, feature_names=self.get_feature_names())
-
+        return self._random_forest.to_features(binary_representation,
+                                               eliminate_redundant_features=eliminate_redundant_features,
+                                               details=details,
+                                               contrastive=contrastive, without_intervals=without_intervals,
+                                               feature_names=self.get_feature_names())
 
     def _to_binary_representation(self, instance):
         return self._random_forest.instance_to_binaries(instance)
 
     def is_implicant(self, binary_representation, *, prediction=None):
-        if prediction is None: 
+        if prediction is None:
             prediction = self.target_prediction
         binary_representation = self.extend_reason_with_theory(binary_representation)
         return self._random_forest.is_implicant(binary_representation, prediction)
@@ -88,7 +87,6 @@ class ExplainerRF(Explainer):
 
     def predict(self, instance):
         return self._random_forest.predict_instance(instance)
-
 
     def direct_reason(self):
         """The direct reason of an instance x is the term t of the implicant (binary form of the instance) corresponding to the unique root-to-leaf
@@ -113,7 +111,7 @@ class ExplainerRF(Explainer):
                     tmp[abs(l)] = True
         direct_reason = []
         for l in self.binary_representation:
-            if tmp[abs(l)] :
+            if tmp[abs(l)]:
                 direct_reason.append(l)
 
         # remove excluded features
@@ -123,7 +121,6 @@ class ExplainerRF(Explainer):
             reason = Explainer.format(list(direct_reason))
         self._visualisation.add_history(self._instance, self.__class__.__name__, self.direct_reason.__name__, reason)
         return reason
-
 
     def minimal_contrastive_reason(self, *, n=1, time_limit=None):
         """Formally, a contrastive explanation for an instance x given f is a subset t of the characteristics of x that is minimal w.r.t. set
@@ -147,7 +144,8 @@ class ExplainerRF(Explainer):
         first_call = True
         time_limit = 0 if time_limit is None else time_limit
         best_score = 0
-        tree_cnf = self._random_forest.to_CNF(self._instance, self._binary_representation, target_prediction=1 if self.target_prediction == 0 else 0,
+        tree_cnf = self._random_forest.to_CNF(self._instance, self._binary_representation,
+                                              target_prediction=1 if self.target_prediction == 0 else 0,
                                               tree_encoding=Encoding.SIMPLE)
 
         # structure to help to do this method faster
@@ -202,7 +200,8 @@ class ExplainerRF(Explainer):
             if reason is None:
                 break
             # We have to invert the reason :)
-            true_reason = [-lit for lit in reason if abs(lit) <= len(self._binary_representation) and map_in_binary_representation[-lit] == True]
+            true_reason = [-lit for lit in reason if
+                           abs(lit) <= len(self._binary_representation) and map_in_binary_representation[-lit] == True]
 
             # Add a blocking clause to avoid this reason in the next steps
             MAXSATsolver.add_hard_clause([-lit for lit in reason if abs(lit) <= max_id_binary_representation])
@@ -227,9 +226,9 @@ class ExplainerRF(Explainer):
         self._elapsed_time = time_used if time_limit == 0 or time_used < time_limit else Explainer.TIMEOUT
 
         reasons = Explainer.format(results, n)
-        self._visualisation.add_history(self._instance, self.__class__.__name__, self.minimal_contrastive_reason.__name__, reasons)
+        self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                        self.minimal_contrastive_reason.__name__, reasons)
         return reasons
-
 
     def sufficient_reason(self, *, time_limit=None):
         """A sufficient reason (also known as prime implicant explanation) for an instance x given a class described by a Boolean function f is a
@@ -244,9 +243,11 @@ class ExplainerRF(Explainer):
             raise ValueError("Instance is not set")
 
         if self._random_forest.n_classes == 2:
-            hard_clauses = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction, tree_encoding=Encoding.MUS)
+            hard_clauses = self._random_forest.to_CNF(self._instance, self._binary_representation,
+                                                      self.target_prediction, tree_encoding=Encoding.MUS)
         else:
-            hard_clauses = self._random_forest.to_CNF_sufficient_reason_multi_classes(self._instance, self.binary_representation,
+            hard_clauses = self._random_forest.to_CNF_sufficient_reason_multi_classes(self._instance,
+                                                                                      self.binary_representation,
                                                                                       self.target_prediction)
 
         if self._theory:
@@ -276,9 +277,9 @@ class ExplainerRF(Explainer):
         reason = [mapping[i] for i in model if i > 1]
 
         reason = Explainer.format(reason, 1)
-        self._visualisation.add_history(self._instance, self.__class__.__name__, self.sufficient_reason.__name__, reason)
+        self._visualisation.add_history(self._instance, self.__class__.__name__, self.sufficient_reason.__name__,
+                                        reason)
         return reason
-
 
     def minimal_sufficient_reason(self, time_limit=None):
         """A sufficient reason (also known as prime implicant explanation) for an instance x given a class described by a Boolean function f is a
@@ -297,9 +298,11 @@ class ExplainerRF(Explainer):
             raise ValueError("Instance is not set")
 
         if self._random_forest.n_classes == 2:
-            hard_clauses = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction, tree_encoding=Encoding.MUS)
+            hard_clauses = self._random_forest.to_CNF(self._instance, self._binary_representation,
+                                                      self.target_prediction, tree_encoding=Encoding.MUS)
         else:
-            hard_clauses = self._random_forest.to_CNF_sufficient_reason_multi_classes(self._instance, self.binary_representation,
+            hard_clauses = self._random_forest.to_CNF_sufficient_reason_multi_classes(self._instance,
+                                                                                      self.binary_representation,
                                                                                       self.target_prediction)
 
         if self._theory:
@@ -321,9 +324,9 @@ class ExplainerRF(Explainer):
         reason = optux_solver.solve(self._binary_representation)
 
         reason = Explainer.format(reason)
-        self._visualisation.add_history(self._instance, self.__class__.__name__, self.sufficient_reason.__name__, reason)
+        self._visualisation.add_history(self._instance, self.__class__.__name__, self.sufficient_reason.__name__,
+                                        reason)
         return reason
-
 
     def majoritary_reason(self, *, n=1, n_iterations=50, time_limit=None, seed=0):
         """Informally, a majoritary reason for classifying a instance x as positive by some random forest f
@@ -358,7 +361,8 @@ class ExplainerRF(Explainer):
             if self._theory:
                 c_explainer.set_theory(self.c_RF, tuple(self.get_theory()))
             current_time = time.process_time()
-            reason = c_explainer.compute_reason(self.c_RF, self._binary_representation, implicant_id_features, self.target_prediction, n_iterations,
+            reason = c_explainer.compute_reason(self.c_RF, self._binary_representation, implicant_id_features,
+                                                self.target_prediction, n_iterations,
                                                 time_limit, int(reason_expressivity), seed, 0)
             total_time = time.process_time() - current_time
             self._elapsed_time = total_time if time_limit == 0 or total_time < time_limit else Explainer.TIMEOUT
@@ -366,18 +370,22 @@ class ExplainerRF(Explainer):
                 reason = self.to_features_indexes(reason)  # TODO
 
             reason = Explainer.format(reason)
-            self._visualisation.add_history(self._instance, self.__class__.__name__, self.majoritary_reason.__name__, reason)
+            self._visualisation.add_history(self._instance, self.__class__.__name__, self.majoritary_reason.__name__,
+                                            reason)
             return reason
 
         if self._theory:
             raise NotImplementedError("Theory and all majoritary is not yet implanted")
         n = n if type(n) == int else float('inf')
 
-        clauses = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction, tree_encoding=Encoding.SIMPLE)
+        clauses = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction,
+                                             tree_encoding=Encoding.SIMPLE)
         max_id_variable = CNFencoding.compute_max_id_variable(self._binary_representation)
         solver = GlucoseSolver()
 
-        solver.add_clauses([[lit for lit in clause if lit in self._binary_representation or abs(lit) > max_id_variable] for clause in clauses])
+        solver.add_clauses(
+            [[lit for lit in clause if lit in self._binary_representation or abs(lit) > max_id_variable] for clause in
+             clauses])
 
         if len(self._excluded_literals) > 0:
             solver.add_clauses([-lit] for lit in self._excluded_literals)
@@ -387,7 +395,8 @@ class ExplainerRF(Explainer):
         while True:
             result, _time = solver.solve()
             time_used += _time
-            if result is None or (time_limit is not None and time_used > time_limit) or (time_limit is None and len(majoritaries) >= n):
+            if result is None or (time_limit is not None and time_used > time_limit) or (
+                    time_limit is None and len(majoritaries) >= n):
                 break
 
             majoritary = [lit for lit in result if lit in self._binary_representation]
@@ -396,9 +405,9 @@ class ExplainerRF(Explainer):
             solver.add_clauses([[-lit for lit in result if abs(lit) <= max_id_variable]])  # block this implicant
         self._elapsed_time = time_used if (time_limit is None or time_used < time_limit) else Explainer.TIMEOUT
         reasons = Explainer.format(CNFencoding.remove_subsumed(majoritaries), n)
-        self._visualisation.add_history(self._instance, self.__class__.__name__, self.majoritary_reason.__name__, reasons)
+        self._visualisation.add_history(self._instance, self.__class__.__name__, self.majoritary_reason.__name__,
+                                        reasons)
         return reasons
-
 
     def preferred_majoritary_reason(self, *, method, n=1, time_limit=None, weights=None, features_partition=None):
         """This approach consists in exploiting a model, making precise her / his
@@ -434,13 +443,16 @@ class ExplainerRF(Explainer):
         n = n if type(n) == int else float('inf')
 
         if self._random_forest.n_classes == 2:
-            clauses = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction, tree_encoding=Encoding.SIMPLE)
+            clauses = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction,
+                                                 tree_encoding=Encoding.SIMPLE)
         else:
-            clauses = self._random_forest.to_CNF_majoritary_reason_multi_classes(self._instance, self._binary_representation, self.target_prediction)
+            clauses = self._random_forest.to_CNF_majoritary_reason_multi_classes(self._instance,
+                                                                                 self._binary_representation,
+                                                                                 self.target_prediction)
 
         n_variables = CNFencoding.compute_n_variables(clauses)
         id_features = self._random_forest.get_id_features(self._binary_representation)
-        
+
         weights = compute_weight(method, self._instance, weights, self._random_forest.forest[0].learner_information,
                                  features_partition=features_partition)
         solver = OPENWBOSolver()
@@ -450,7 +462,8 @@ class ExplainerRF(Explainer):
             map_abs_implicant[abs(lit)] = lit
         # Hard clauses
         for c in clauses:
-            solver.add_hard_clause([lit for lit in c if abs(lit) > max_id_variable or map_abs_implicant[abs(lit)] == lit])
+            solver.add_hard_clause(
+                [lit for lit in c if abs(lit) > max_id_variable or map_abs_implicant[abs(lit)] == lit])
 
         if self._theory:
             clauses_theory = self.get_theory()
@@ -480,9 +493,11 @@ class ExplainerRF(Explainer):
                     return ()
                 reasons = Explainer.format(reasons, n)
                 if method == PreferredReasonMethod.Minimal:
-                    self._visualisation.add_history(self._instance, self.__class__.__name__, self.minimal_majoritary_reason.__name__, reasons)
+                    self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                    self.minimal_majoritary_reason.__name__, reasons)
                 else:
-                    self._visualisation.add_history(self._instance, self.__class__.__name__, self.preferred_majoritary_reason.__name__, reasons)
+                    self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                    self.preferred_majoritary_reason.__name__, reasons)
                 return reasons
 
             prefered_reason = [lit for lit in model if lit in self._binary_representation]
@@ -495,9 +510,11 @@ class ExplainerRF(Explainer):
             elif score != best_score:
                 reasons = Explainer.format(reasons, n)
                 if method == PreferredReasonMethod.Minimal:
-                    self._visualisation.add_history(self._instance, self.__class__.__name__, self.minimal_majoritary_reason.__name__, reasons)
+                    self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                    self.minimal_majoritary_reason.__name__, reasons)
                 else:
-                    self._visualisation.add_history(self._instance, self.__class__.__name__, self.preferred_majoritary_reason.__name__, reasons)
+                    self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                                    self.preferred_majoritary_reason.__name__, reasons)
                 return reasons
             first_call = False
 
@@ -507,15 +524,15 @@ class ExplainerRF(Explainer):
         self._elapsed_time = time_used if time_limit is None or time_used < time_limit else Explainer.TIMEOUT
         reasons = Explainer.format(reasons, n)
         if method == PreferredReasonMethod.Minimal:
-            self._visualisation.add_history(self._instance, self.__class__.__name__, self.minimal_majoritary_reason.__name__, reasons)
+            self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                            self.minimal_majoritary_reason.__name__, reasons)
         else:
-            self._visualisation.add_history(self._instance, self.__class__.__name__, self.preferred_majoritary_reason.__name__, reasons)
+            self._visualisation.add_history(self._instance, self.__class__.__name__,
+                                            self.preferred_majoritary_reason.__name__, reasons)
         return reasons
-
 
     def minimal_majoritary_reason(self, *, n=1, time_limit=None):
         return self.preferred_majoritary_reason(method=PreferredReasonMethod.Minimal, n=n, time_limit=time_limit)
-
 
     def is_majoritary_reason(self, reason, n_samples=50):
         extended_reason = self.extend_reason_with_theory(reason)
@@ -533,30 +550,31 @@ class ExplainerRF(Explainer):
             if nb > n_samples:
                 break
         return True
-    
-        
 
     def most_anchored_reason(self, *, time_limit=None, check=False, type_references="normal"):
         if self._random_forest.n_classes == 2:
-            cnf = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction, tree_encoding=Encoding.MUS)
+            cnf = self._random_forest.to_CNF(self._instance, self._binary_representation, self.target_prediction,
+                                             tree_encoding=Encoding.MUS)
             if self._theory:
                 size = len(cnf)
                 clauses_theory = self.get_theory()
                 cnf = cnf + tuple(clauses_theory)
-                print("Theory enabled: clauses: "+ str(size) + " to " + str(len(cnf)))
-                
-                #for c in clauses_theory:
+                print("Theory enabled: clauses: " + str(size) + " to " + str(len(cnf)))
+
+                # for c in clauses_theory:
                 #    cnf.append(c)
-                    
+
             n_variables = CNFencoding.compute_max_id_variable(cnf)
-            return self._most_anchored_reason(n_variables=n_variables, cnf=cnf, time_limit=time_limit, check=check, type_references=type_references)
-        
+            return self._most_anchored_reason(n_variables=n_variables, cnf=cnf, time_limit=time_limit, check=check,
+                                              type_references=type_references)
+
         raise NotImplementedError("The anchored_reason() method for RF works only with binary-class datasets.")
-        
+
     def condi(self, *, conditions):
         conditions, change = self._random_forest.parse_conditions_for_rectify(conditions)
         return conditions
-    def rectify_cxx(self, *, conditions, label, tests=False,theory_cnf=None):
+
+    def rectify_cxx(self, *, conditions, label, tests=False, theory_cnf=None):
         """
         C++ version
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
@@ -567,15 +585,15 @@ class ExplainerRF(Explainer):
             label (int): The label of the decision rule.   
         Returns:
             RandomForest: The rectified random forest.  
-        """ 
+        """
 
-        #check conditions and return a list of literals
-        #print("conditions:", conditions)
-        
+        # check conditions and return a list of literals
+        # print("conditions:", conditions)
+
         conditions, change = self._random_forest.parse_conditions_for_rectify(conditions)
         if change is True:
             self.set_features_type(self._last_features_types)
-        
+
         current_time = time.process_time()
         if self.c_rectifier is None:
             self.c_rectifier = c_explainer.new_rectifier()
@@ -583,19 +601,17 @@ class ExplainerRF(Explainer):
         if tests is True:
             is_implicant = self.is_implicant(conditions, prediction=label)
             print("is_implicant ?", is_implicant)
-        
-        
 
         for i, tree in enumerate(self._random_forest.forest):
             c_explainer.rectifier_add_tree(self.c_rectifier, tree.raw_data_for_CPP())
 
         n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - Initial (c++):", n_nodes_cxx) 
+        Tools.verbose("Rectify - Number of nodes - Initial (c++):", n_nodes_cxx)
 
         # Rectification part
         c_explainer.rectifier_improved_rectification(self.c_rectifier, conditions, label)
-        n_nodes_ccx =  c_explainer.rectifier_n_nodes(self.c_rectifier)
-        Tools.verbose("Rectify - Number of nodes - After rectification (c++):", n_nodes_ccx)    
+        n_nodes_ccx = c_explainer.rectifier_n_nodes(self.c_rectifier)
+        Tools.verbose("Rectify - Number of nodes - After rectification (c++):", n_nodes_ccx)
         if tests is True:
             for i in range(len(self._random_forest.forest)):
                 tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, i)
@@ -605,7 +621,6 @@ class ExplainerRF(Explainer):
             print("is_implicant after rectification ?", is_implicant)
             if is_implicant is False:
                 raise ValueError("Problem 2")
-        
 
         # Simplify Theory part
         if theory_cnf is None:
@@ -618,7 +633,7 @@ class ExplainerRF(Explainer):
         n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
         Tools.verbose("Rectify - Number of nodes - After simplification with the theory (c++):", n_nodes_cxx)
 
-        if tests is True: 
+        if tests is True:
             for i in range(len(self._random_forest.forest)):
                 tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, i)
                 self._random_forest.forest[i].delete(self._random_forest.forest[i].root)
@@ -627,19 +642,18 @@ class ExplainerRF(Explainer):
             print("is_implicant after simplify theory ?", is_implicant)
             if is_implicant is False:
                 raise ValueError("Problem 3")
-        
+
         # Simplify part
         c_explainer.rectifier_simplify_redundant(self.c_rectifier)
         n_nodes_cxx = c_explainer.rectifier_n_nodes(self.c_rectifier)
         Tools.verbose("Rectify - Number of nodes - After elimination of redundant nodes (c++):", n_nodes_cxx)
-        
+
         # Get the C++ trees and convert it :) 
         for i in range(len(self._random_forest.forest)):
             tree_tuples = c_explainer.rectifier_get_tree(self.c_rectifier, i)
             self._random_forest.forest[i].delete(self._random_forest.forest[i].root)
             self._random_forest.forest[i].root = self._random_forest.forest[i].from_tuples(tree_tuples)
-        
-        
+
         c_explainer.rectifier_free(self.c_rectifier)
         Tools.verbose("Rectify - Number of nodes - Final (c++):", self._random_forest.n_nodes())
         if tests is True:
@@ -647,18 +661,18 @@ class ExplainerRF(Explainer):
             print("is_implicant after simplify ?", is_implicant)
             if is_implicant is False:
                 raise ValueError("Problem 4")
-        
+
         if self._instance is not None:
             self.set_instance(self._instance)
 
         self._elapsed_time = time.process_time() - current_time
-        
+
         Tools.verbose("Rectification time:", self._elapsed_time)
 
         Tools.verbose("--------------")
         return self._random_forest
 
-    def rectify(self, *, conditions, label, cxx=True, tests=False,theory_cnf=None):
+    def rectify(self, *, conditions, label, cxx=True, tests=False, theory_cnf=None):
         """
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
         Simplify the model (the theory can help to eliminate some nodes).
@@ -669,19 +683,18 @@ class ExplainerRF(Explainer):
         Returns:
             RandomForest: The rectified random forest.  
         """
-        
+
         if cxx is True:
-            return self.rectify_cxx(conditions=conditions, label=label, tests=tests,theory_cnf=theory_cnf)
+            return self.rectify_cxx(conditions=conditions, label=label, tests=tests, theory_cnf=theory_cnf)
 
         current_time = time.process_time()
-        #print("conditions:", conditions)
-        #print("conditions to features:", self.to_features(conditions, eliminate_redundant_features=False))
-        
-        
+        # print("conditions:", conditions)
+        # print("conditions to features:", self.to_features(conditions, eliminate_redundant_features=False))
+
         Tools.verbose("")
         Tools.verbose("-------------- C++ Rectification information:")
         n_nodes_python = self._random_forest.n_nodes()
-        Tools.verbose("Model - Number of nodes (initial):", n_nodes_python) 
+        Tools.verbose("Model - Number of nodes (initial):", n_nodes_python)
 
         is_implicant = self.is_implicant(conditions, prediction=label)
         print("is_implicant ?", is_implicant)
@@ -693,30 +706,30 @@ class ExplainerRF(Explainer):
             tree_decision_rule = self._random_forest.forest[i].decision_rule_to_tree(conditions, label)
             if label == 1:
                 # When label is 1, we have to inverse the decision rule and disjoint the two trees. 
-                tree_decision_rule = tree_decision_rule.negating_tree() 
+                tree_decision_rule = tree_decision_rule.negating_tree()
                 self._random_forest.forest[i] = tree.disjoint_tree(tree_decision_rule)
             elif label == 0:
                 # When label is 0, we have to concatenate the two trees.  
                 self._random_forest.forest[i] = tree.concatenate_tree(tree_decision_rule)
             else:
                 raise NotImplementedError("Multiclasses is in progress.")
-            
+
         n_nodes_python = self._random_forest.n_nodes()
-        Tools.verbose("Model - Number of nodes (after rectification):", n_nodes_python) 
-        
+        Tools.verbose("Model - Number of nodes (after rectification):", n_nodes_python)
+
         if tests is True:
             is_implicant = self.is_implicant(conditions, prediction=label)
             print("is_implicant after rectification ?", is_implicant)
             if is_implicant is False:
                 raise ValueError("Problem 2")
-            
+
         # Simplify Theory part
-        for i, tree in enumerate(self._random_forest.forest):    
+        for i, tree in enumerate(self._random_forest.forest):
             self._random_forest.forest[i] = self.simplify_theory(tree)
 
         n_nodes_python = self._random_forest.n_nodes()
         Tools.verbose("Model - Number of nodes (after simplification using the theory):", n_nodes_python)
-        
+
         if tests is True:
             is_implicant = self.is_implicant(conditions, prediction=label)
             print("is_implicant after simplify theory ?", is_implicant)
@@ -724,25 +737,25 @@ class ExplainerRF(Explainer):
                 raise ValueError("Problem 3")
 
         # Simplify part
-        for i, tree in enumerate(self._random_forest.forest):    
+        for i, tree in enumerate(self._random_forest.forest):
             tree.simplify()
-        
+
         n_nodes_python = self._random_forest.n_nodes()
         Tools.verbose("Model - Number of nodes (after elimination of redundant nodes):", n_nodes_python)
-        
+
         if tests is True:
             is_implicant = self.is_implicant(conditions, prediction=label)
             print("is_implicant after simplify ?", is_implicant)
             if is_implicant is False:
                 raise ValueError("Problem 4")
-            
+
         if self._instance is not None:
             self.set_instance(self._instance)
 
         self._elapsed_time = time.process_time() - current_time
-        
+
         Tools.verbose("Rectification time:", self._elapsed_time)
 
         Tools.verbose("--------------")
-        
+
         return self._random_forest
