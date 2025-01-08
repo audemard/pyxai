@@ -50,6 +50,9 @@ class ExplainerRF(Explainer):
         self.c_RF = None
 
 
+
+
+
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False, without_intervals=False):
         """
         Convert each literal of the implicant (representing a condition) to a tuple (``id_feature``, ``threshold``, ``sign``, ``weight``).

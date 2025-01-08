@@ -32,6 +32,22 @@ class Explainer:
     def get_theory(self):
         raise NotImplementedError("")
 
+
+    def instance_compatible_with_theory(self):
+        if self._theory is False:
+            return True
+        if self._instance is None:
+            raise ValueError("The instance is None")
+
+        if self._glucose is None:
+            self._glucose = GlucoseSolver()
+            self._glucose.add_clauses(self.get_theory())
+
+        ret = self._glucose.propagate(self.binary_representation)
+        return ret[0]
+
+
+
     def get_model(self):
         """
         The model associated to the explainer (DT, RF, BT)
