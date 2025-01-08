@@ -69,7 +69,6 @@ class ExplainerDT(Explainer):
         # print(present)
         return [lit for i, lit in enumerate(binary_representation) if present[i]]
 
-
     def to_features(self, binary_representation, *, eliminate_redundant_features=True, details=False, contrastive=False,
                     without_intervals=False):
         """_summary_
@@ -85,13 +84,12 @@ class ExplainerDT(Explainer):
                                       contrastive=contrastive, without_intervals=without_intervals,
                                       feature_names=self.get_feature_names())
 
-
     def add_clause_to_theory(self, clause):
         self._additional_theory.append(tuple(clause))
         self._theory = True
         self.c_rectifier = None
         self.c_RF = None
-
+        self._glucose = None
 
     def direct_reason(self):
         """
@@ -230,7 +228,6 @@ class ExplainerDT(Explainer):
 
         return reason
 
-
     def is_reason(self, reason, *, n_samples=-1):
         extended = self.extend_reason_with_theory(reason)
         return self._tree.is_implicant(extended, self.target_prediction)
@@ -326,10 +323,8 @@ class ExplainerDT(Explainer):
                                             self.preferred_sufficient_reason.__name__, reasons)
         return reasons
 
-
     def minimal_sufficient_reason(self, *, n=1, time_limit=None):
         return self.preferred_sufficient_reason(method=PreferredReasonMethod.Minimal, n=n, time_limit=time_limit)
-
 
     def n_sufficient_reasons(self, time_limit=None):
         self.n_sufficient_reasons_per_attribute(time_limit=time_limit)
@@ -380,7 +375,8 @@ class ExplainerDT(Explainer):
     def condi(self, *, conditions):
         conditions, change = self._tree.parse_conditions_for_rectify(conditions)
         return conditions
-    def rectify_cxx(self, *, conditions, label, tests=False,theory_cnf=None):
+
+    def rectify_cxx(self, *, conditions, label, tests=False, theory_cnf=None):
         """
         C++ version
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
@@ -468,7 +464,7 @@ class ExplainerDT(Explainer):
         Tools.verbose("--------------")
         return self._tree
 
-    def rectify(self, *, conditions, label, cxx=True, tests=False,theory_cnf=None):
+    def rectify(self, *, conditions, label, cxx=True, tests=False, theory_cnf=None):
         """
         Rectify the Decision Tree (self._tree) of the explainer according to a `conditions` and a `label`.
         Simplify the model (the theory can help to eliminate some nodes).
@@ -480,7 +476,7 @@ class ExplainerDT(Explainer):
             DecisionTree: The rectified tree.
         """
         if cxx is True:
-            return self.rectify_cxx(conditions=conditions, label=label, tests=tests,theory_cnf=theory_cnf)
+            return self.rectify_cxx(conditions=conditions, label=label, tests=tests, theory_cnf=theory_cnf)
 
         Tools.verbose("")
         Tools.verbose("-------------- Rectification information:")
@@ -551,5 +547,3 @@ class ExplainerDT(Explainer):
         n_variables = CNFencoding.compute_n_variables(cnf)
         return self._anchored_reason(n_variables=n_variables, cnf=cnf, n_anchors=n_anchors,
                                      reference_instances=reference_instances, time_limit=time_limit, check=check)
-
-
