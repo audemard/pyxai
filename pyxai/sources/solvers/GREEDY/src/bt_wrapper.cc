@@ -287,8 +287,8 @@ static PyObject *set_theory(PyObject *self, PyObject *args) {
         std::vector<Lit> c;
         PyObject *value_obj = PyTuple_GetItem(vector_theory, i);
         Py_ssize_t size_obj = PyTuple_Size(value_obj);
-        if (size_obj != 2)
-            throw std::logic_error("The clauses of the theory must be of size 2 (binary).");
+        if (size_obj < 1)
+            throw std::logic_error("The clauses of the theory must be of size greater than 1");
         for(int i = 0; i < size_obj; i++) {
             long l = PyLong_AsLong(PyTuple_GetItem(value_obj, i));
             if(max < std::abs(l)) max = std::abs(l);

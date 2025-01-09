@@ -2,6 +2,8 @@ import random
 import json
 from typing import Iterable
 
+from numpy.f2py.auxfuncs import throw_error
+
 from pyxai.sources.core.explainer.Visualisation import Visualisation
 from pyxai.sources.core.tools.utils import count_dimensions
 from pyxai.sources.core.structure.type import TypeFeature, OperatorCondition
@@ -26,6 +28,25 @@ class Explainer:
         self._glucose = None
         self._reference_instances = None
         self._last_features_types = None
+
+    def get_theory(self):
+        raise NotImplementedError("")
+
+
+    def instance_compatible_with_theory(self):
+        if self._theory is False:
+            return True
+        if self._instance is None:
+            raise ValueError("The instance is None")
+
+        if self._glucose is None:
+            self._glucose = GlucoseSolver()
+            self._glucose.add_clauses(self.get_theory())
+
+        ret = self._glucose.propagate(self.binary_representation)
+        return ret[0]
+
+
 
     def get_model(self):
         """
@@ -277,7 +298,8 @@ class Explainer:
         Tools.verbose("")
         Tools.verbose("Number of used features in the model (before the encoding of categorical features):",
                       len(used_features_without_one_hot_encoded))
-        Tools.verbose("Number of used features in the model (after the encoding of categorical features):", len(used_features))
+        Tools.verbose("Number of used features in the model (after the encoding of categorical features):",
+                      len(used_features))
         Tools.verbose("----------------------------------------------")
 
     def _theory_clauses(self):
@@ -408,7 +430,7 @@ class Explainer:
             return reason
         if self._glucose is None:
             self._glucose = GlucoseSolver()
-            self._glucose.add_clauses(self.get_model().get_theory(self._binary_representation))
+            self._glucose.add_clauses(self.get_theory())
         return self._glucose.propagate(reason)[1]
 
     def is_reason(self, reason, *, n_samples=1000):
@@ -420,7 +442,6 @@ class Explainer:
         @param n_samples: (int) the number of tests to be done.
         @return: True if the reason is really one reason, False otherwise.
         """
-
         for _ in range(n_samples):
             binary_representation = self.extend_reason_to_complete_representation(reason)
             if not self.is_implicant(binary_representation):
@@ -599,14 +620,14 @@ class Explainer:
             self.last_n_anchors = 0
 
         return None if previous_reason is None else Explainer.format(previous_reason)
-    
+
     def simplify_theory(self, tree):
         if self._theory is True:
             solver = GlucoseSolver()
             theory_cnf = self.get_model().get_theory(None)
             return solver.symplify_theory(tree, theory_cnf)
         return tree
-    
+
     @property
     def visualisation(self):
         """This object allows to open gui, save images, and so on
