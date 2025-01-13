@@ -8,6 +8,8 @@ import apriori_association_rules
 import time
 ##################################################################################################################################
 # I load the dataset
+
+
 name=Tools.Options.dataset 
 data = pd.read_csv(name+'.csv')
 # Split the DataFrame into training and test sets
@@ -96,42 +98,50 @@ for id_instance,instance_dict in enumerate(binarized_validation):
 len_reason=0
 treasean=[]
 nb_is_not_reason=0
-majoritary_reason1=[]
+majoritary_literal_reason1=[]
+majoritary_feature_reason1=[]
+elapsed_time_majoritary_reason1 = []
 ############################################################################################################"
 #We extract the majority explanations on the instances chosen before adding the second theory.
-start_time = time.time()
 for i in good_instances:
+    start_time = time.time()
     rf_explainer.set_instance(i)
     reason = rf_explainer.majoritary_reason(n_iterations=100,seed=1)
-    majoritary_reason1.append(reason)
+    majoritary_literal_reason1.append(len(reason))
+    majoritary_feature_reason1.append(len(rf_explainer.to_features(reason)))
     if not(rf_explainer.is_majoritary_reason(reason)):
         nb_is_not_reason+=1
     treasean.append(len(reason))
     len_reason+=len(reason)
-end_time = time.time()
+    end_time = time.time()
+    elapsed_time_majoritary_reason1.append(end_time - start_time)
+
 moreasen1=len_reason/len(good_instances)
-elapsed_time_majoritary_reason1 = (end_time - start_time)
-#We add the second theory to our explainer 
+#We add the second theory to our explainer
 for i in theorie2:
     rf_explainer.add_clause_to_theory(i)
 
 len_reason_theorie2=0
 nb_is_not_reason2=0
 treasean1=[]
-majoritary_reason2=[]
+majoritary_literal_reason2=[]
+majoritary_feature_reason2=[]
+elapsed_time_majoritary_reason2 = []
 # We extract the majority explanations on the instances selected after adding the second theory.
-start_time = time.time()
 for i in good_instances:
+    start_time = time.time()
     rf_explainer.set_instance(i)
     reason1 = rf_explainer.majoritary_reason(n_iterations=100,seed=1)
-    majoritary_reason2.append(reason)
+    majoritary_literal_reason2.append(len(reason1))
+    majoritary_feature_reason2.append(len(rf_explainer.to_features(reason1)))
     if not(rf_explainer.is_majoritary_reason(reason1)):
         nb_is_not_reason2+=1
     treasean1.append(len(reason1))
     len_reason_theorie2+=len(reason1)
-end_time = time.time()
+    end_time = time.time()
+    elapsed_time_majoritary_reason2.append(end_time - start_time)
+
 moreasen2=len_reason_theorie2/len(good_instances)
-elapsed_time_majoritary_reason2 = (end_time - start_time)
 
 
 #Traverse both lists simultaneously and compare the sizes of the explanations before and after adding the apriori theory.
@@ -154,13 +164,13 @@ data_ = {
     "confidence":min_confidence,
     "support":min_support,
     "nb_instances_excluded":nb_instances_excluded,
-    "majoritary_reason1": majoritary_reason1,
-    "majoritary_reason2": majoritary_reason2,
+    "size_majority_reason_literal_1": majoritary_literal_reason1,
+    "size_majority_reason_literal_2": majoritary_literal_reason2,
+    "size_majority_reason_feature_1": majoritary_feature_reason1,
+    "size_majority_reason_feature_2": majoritary_feature_reason2,
     "number_of_reasons_reduced_after_adding_theory": count_inf,
     "Number_of_reasons_increased_after_adding_theory": count_sup,
     "Number_of_equal_reasons_after_adding_theory": count_eq,
-    "Average_size_before_adding_new_clauses ": moreasen1,
-    "Average_size_after_adding_new_clauses": moreasen2,
     "Number_of_is_not_reason_before_adding_new_clauses": nb_is_not_reason,
     "Number_of_is_not_reason_after_adding_new_clauses ": nb_is_not_reason2,
     "elapsed_time_aprioris":elapsed_time_aprioris,
