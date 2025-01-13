@@ -547,3 +547,6 @@ class ExplainerDT(Explainer):
         n_variables = CNFencoding.compute_n_variables(cnf)
         return self._anchored_reason(n_variables=n_variables, cnf=cnf, n_anchors=n_anchors,
                                      reference_instances=reference_instances, time_limit=time_limit, check=check)
+
+    def to_CNF(self):
+        return self._tree.to_CNF(self._instance)
