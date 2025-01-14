@@ -7,9 +7,11 @@ from pyxai.sources.core.structure.decisionNode import DecisionNode, LeafNode
 from pyxai.sources.core.structure.type import TypeLeaf, Encoding, OperatorCondition
 from pyxai.sources.core.tools.encoding import CNFencoding
 
+
 class DecisionTree(BinaryMapping):
 
-    def __init__(self, n_features, root, target_class=0, id_solver_results=0, learner_information=None, force_features_equal_to_binaries=False, feature_names=None):
+    def __init__(self, n_features, root, target_class=0, id_solver_results=0, learner_information=None,
+                 force_features_equal_to_binaries=False, feature_names=None):
         """
 
         Args:
@@ -32,12 +34,12 @@ class DecisionTree(BinaryMapping):
         if not self.root.is_leaf():
             self.define_parents(self.root)
         self.force_features_equal_to_binaries = force_features_equal_to_binaries
-        
-        self.map_id_binaries_to_features, self.map_features_to_id_binaries = self.compute_id_binaries(force_features_equal_to_binaries)
+
+        self.map_id_binaries_to_features, self.map_features_to_id_binaries = self.compute_id_binaries(
+            force_features_equal_to_binaries)
         super().__init__(self.map_id_binaries_to_features, self.map_features_to_id_binaries, self.learner_information)
 
         # assert isinstance(self.type_tree, TypeTree), "Please put the good type of the tree !"
-
 
     def __str__(self):
         s = "**Decision Tree Model**" + os.linesep
@@ -49,18 +51,19 @@ class DecisionTree(BinaryMapping):
     def from_tuples(self, tuples):
         if isinstance(tuples, int):
             return LeafNode(tuples)
- 
+
         binary_variable = tuples[0]
         id_feature, op, threshold = self.map_id_binaries_to_features[binary_variable]
-        
+
         node = DecisionNode(id_feature, threshold=threshold, operator=op, left=None, right=None)
         node.left = self.from_tuples(tuples[1][0])
+        node.left.parent = node
         node.right = self.from_tuples(tuples[1][1])
+        node.right.parent = node
         return node
 
-    
     def delete(self, node):
-        if node.is_leaf(): 
+        if node.is_leaf():
             del node
         else:
             self.delete(node.left)
@@ -69,16 +72,17 @@ class DecisionTree(BinaryMapping):
 
     def raw_data_for_CPP(self):
         raw_t = tuple([self.root.value]) if self.root.is_leaf() else self.to_tuples(self.root, for_cpp=True)
-        return (int(self.target_class[0]) if isinstance(self.target_class, (numpy.ndarray, list, tuple)) else self.target_class, raw_t)
-
+        return (
+            int(self.target_class[0]) if isinstance(self.target_class,
+                                                    (numpy.ndarray, list, tuple)) else self.target_class,
+            raw_t)
 
     def raw_data(self):
         raw = tuple([self.root.value]) if self.root.is_leaf() else self.to_tuples(self.root)
         return (int(self.n_features), [int(element) for element in self.target_class], raw)
 
     def depth(self):
-        return self._depth(self.root) 
-    
+        return self._depth(self.root)
 
     def _depth(self, node):
         if node.is_leaf():
@@ -86,7 +90,7 @@ class DecisionTree(BinaryMapping):
         left_depth = self._depth(node.left)
         right_depth = self._depth(node.right)
         return max(left_depth, right_depth) + 1
-        
+
     def to_tuples(self, node, for_cpp=False):
         """
         For example, this method can return (1, (2, (2.5,3.5)), (3 (-1.5, 0.5)))
@@ -103,22 +107,18 @@ class DecisionTree(BinaryMapping):
             output.append(node.right.value if not isinstance(node.right.value, numpy.int64) else int(node.right.value))
         return tuple(output)
 
-
     def simplify(self):
         while self._simplify(self.root, self.root):
             pass
         raw = self.to_tuples(self.root)
         if raw[1] == raw[2]:
             self.root = self.root.left
-        
-
 
     def _simplify(self, root, node, path=[], come_from=None, previous_node=None, previous_previous_node=None):
         res_1 = False
         res_2 = False
         change = False
 
-        
         if previous_node is not None:
             new_tuple = (self.get_id_variable(previous_node), come_from)
             if new_tuple in path:
@@ -145,8 +145,10 @@ class DecisionTree(BinaryMapping):
                         previous_node.right = node.right
                         change = True
             pp = previous_node
-            res_1 = self._simplify(root, node.left, copy.deepcopy(path), come_from=0, previous_node=node, previous_previous_node=pp)
-            res_2 = self._simplify(root, node.right, copy.deepcopy(path), come_from=1, previous_node=node, previous_previous_node=pp)
+            res_1 = self._simplify(root, node.left, copy.deepcopy(path), come_from=0, previous_node=node,
+                                   previous_previous_node=pp)
+            res_2 = self._simplify(root, node.right, copy.deepcopy(path), come_from=1, previous_node=node,
+                                   previous_previous_node=pp)
         return res_1 or res_2 or change
 
     """
@@ -156,9 +158,10 @@ class DecisionTree(BinaryMapping):
         Returns:
             DecisionTree: A decision tree representing the decision rule.  
     """
+
     def decision_rule_to_tree(self, decision_rule, label):
-        
-        print("decision_rule:",decision_rule)
+
+        print("decision_rule:", decision_rule)
         if len(decision_rule) == 0:
             tree = DecisionTree(self.n_features, LeafNode(label))
             tree.map_id_binaries_to_features = self.map_id_binaries_to_features
@@ -166,30 +169,31 @@ class DecisionTree(BinaryMapping):
             return tree
 
         literal = decision_rule[-1]
-        
-        id_feature, operator, threshold  = self.map_id_binaries_to_features[abs(literal)]
-        parent = DecisionNode(id_feature, operator=operator, threshold=threshold, left=1, right=0) if literal > 0 else DecisionNode(id_feature, operator=operator, threshold=threshold, left=0, right=1)
-        
+
+        id_feature, operator, threshold = self.map_id_binaries_to_features[abs(literal)]
+        parent = DecisionNode(id_feature, operator=operator, threshold=threshold, left=1,
+                              right=0) if literal > 0 else DecisionNode(id_feature, operator=operator,
+                                                                        threshold=threshold, left=0, right=1)
+
         for literal in reversed(decision_rule[:-1]):
             id_feature, operator, threshold = self.map_id_binaries_to_features[abs(literal)]
-            parent = DecisionNode(id_feature, operator=operator, threshold=threshold, left=1, right=parent) if literal > 0 else DecisionNode(id_feature,operator=operator, threshold=threshold, left=parent, right=1)
-        
+            parent = DecisionNode(id_feature, operator=operator, threshold=threshold, left=1,
+                                  right=parent) if literal > 0 else DecisionNode(id_feature, operator=operator,
+                                                                                 threshold=threshold, left=parent,
+                                                                                 right=1)
+
         tree = DecisionTree(self.n_features, parent)
 
-        #This tree have to have the same data of the initial tree !
+        # This tree have to have the same data of the initial tree !
         tree.map_id_binaries_to_features = self.map_id_binaries_to_features
         tree.map_features_to_id_binaries = self.map_features_to_id_binaries
-        
+
         return tree
-
-    
-
 
     def negating_tree(self):
         new_tree = copy.deepcopy(self)
         new_tree.root.negating_tree()
         return new_tree
-
 
     def concatenate_tree(self, other_tree):
         new_tree = copy.deepcopy(self)
@@ -197,13 +201,11 @@ class DecisionTree(BinaryMapping):
         new_tree.concatenate_id_binaries(other_tree)
         return new_tree
 
-
     def disjoint_tree(self, other_tree):
         new_tree = copy.deepcopy(self)
         new_tree.root.concatenate_tree(other_tree, disjunction=True)
         new_tree.concatenate_id_binaries(other_tree)
         return new_tree
-
 
     def get_variables(self, binary_representation=None, node=None):
         if node is None:
@@ -220,13 +222,13 @@ class DecisionTree(BinaryMapping):
                 output.append(-self.get_id_variable(node))
 
         if not node.left.is_leaf() and not node.right.is_leaf():
-            return output + self.get_variables(binary_representation, node.left) + self.get_variables(binary_representation, node.right)
+            return output + self.get_variables(binary_representation, node.left) + self.get_variables(
+                binary_representation, node.right)
         elif not node.left.is_leaf():
             return output + self.get_variables(binary_representation, node.left)
         elif not node.right.is_leaf():
             return output + self.get_variables(binary_representation, node.right)
         return output
-
 
     def get_features(self, node=None):
         if node is None:
@@ -243,7 +245,6 @@ class DecisionTree(BinaryMapping):
         elif not node.right.is_leaf():
             return output + self.get_features(node.right)
         return output
-
 
     def direct_reason(self, instance, node=None):
         if node is None:
@@ -295,7 +296,6 @@ class DecisionTree(BinaryMapping):
                 output.append(-self.get_id_variable(node))
                 return output + self.direct_reason(instance, node.left) if not node.left.is_leaf() else output
 
-
     def define_parents(self, node, *, parent=None):
         if not node.is_leaf():
             self.nodes.append(node)
@@ -304,13 +304,11 @@ class DecisionTree(BinaryMapping):
         if parent is not None:
             node.parent = parent
 
-
     def concatenate_id_binaries(self, other_tree):
         self.map_features_to_id_binaries.update(other_tree.map_features_to_id_binaries)
         for i, element in enumerate(self.map_id_binaries_to_features):
             if element is None:
                 self.map_id_binaries_to_features[i] = other_tree.map_id_binaries_to_features[i]
-
 
     def compute_id_binaries(self, force_features_equal_to_binaries=False):
         """
@@ -332,27 +330,25 @@ class DecisionTree(BinaryMapping):
                     map_id_binaries_to_features.append((node.id_feature, node.operator, node.threshold))
                     id_binary += 1
                 else:
-                    map_features_to_id_binaries[(node.id_feature, node.operator, node.threshold)] = [node.id_feature, 1, None]
+                    map_features_to_id_binaries[(node.id_feature, node.operator, node.threshold)] = [node.id_feature, 1,
+                                                                                                     None]
                     map_id_binaries_to_features[node.id_feature] = (node.id_feature, node.operator, node.threshold)
             else:
                 map_features_to_id_binaries[(node.id_feature, node.operator, node.threshold)][1] += 1
         return (map_id_binaries_to_features, map_features_to_id_binaries)
 
-
     def get_id_variable(self, node):
         return self.map_features_to_id_binaries[(node.id_feature, node.operator, node.threshold)][0]
 
-
     def is_leaf(self):
         return self.root.is_leaf()
-
 
     def compute_nodes_with_leaves(self, node):
         """
         Return a list of tuple representing the children of start_node
         """
         output = []
-        
+
         if node.left.is_leaf() or node.right.is_leaf():
             output.append(node)
         if not node.left.is_leaf():
@@ -366,7 +362,7 @@ class DecisionTree(BinaryMapping):
 
     def _n_nodes(self, node):
         return 1 if node.is_leaf() else 1 + self._n_nodes(node.left) + self._n_nodes(node.right)
-        
+
     def display(self, node):
         if node.is_leaf():
             print(node)
@@ -402,8 +398,8 @@ class DecisionTree(BinaryMapping):
             map_features_to_id_binaries = self.map_features_to_id_binaries
         return self.root.take_decisions_binary_representation(binary_representation, map_features_to_id_binaries)
 
-
-    def to_CNF(self, instance, target_prediction=None, *, tree_encoding=Encoding.COMPLEMENTARY, format=True, inverse_coding=False):
+    def to_CNF(self, instance, target_prediction=None, *, tree_encoding=Encoding.COMPLEMENTARY, format=True,
+               inverse_coding=False):
         """
         Two method:
         - TSEITIN: Create a DNF, i.e. a disjunction of cubes.
@@ -423,7 +419,7 @@ class DecisionTree(BinaryMapping):
         dnf = []
         if self.root.is_leaf():
             return []
-            
+
         for node in self.compute_nodes_with_leaves(self.root):
             if node.left.is_leaf() and \
                     ((code_prediction and node.left.is_prediction(target_prediction))
@@ -439,7 +435,6 @@ class DecisionTree(BinaryMapping):
             return CNFencoding.format(CNFencoding.complementary(dnf)) if format else CNFencoding.complementary(dnf)
         return CNFencoding.format(CNFencoding.tseitin(dnf)) if format else CNFencoding.tseitin(dnf)
 
-
     def create_cube(self, node, type_leaf):
         sign = -1 if type_leaf == TypeLeaf.LEFT else 1
         cube = [sign * self.get_id_variable(node)]
@@ -452,9 +447,8 @@ class DecisionTree(BinaryMapping):
             parent = parent.parent
         return cube
 
-
-    def _get_leaves(self, node) :
-        if node.is_leaf() :
+    def _get_leaves(self, node):
+        if node.is_leaf():
             return [node]
         return self._get_leaves(node.left) + self._get_leaves(node.right)
 
