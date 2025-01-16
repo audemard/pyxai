@@ -37,53 +37,42 @@ for i, instance in validation_df.iterrows():
     label_validation.append(instance[-1])
     binarized_validation.append([0 if l < 0 else 1 for l in rf_explainer.binary_representation] +  [instance[-1]])
 #I add the negation of the features to extract negative association rules.
-for i in range(1,training_data.shape[1]):
-    training_data[f'N_{i}']=training_data[f'X_{i}'].apply(lambda x: 1 if x == 0 else (0 if x == 1 else x))
-training_data['yy'] = training_data['y'].apply(lambda x: 1 if x == 0 else (0 if x == 1 else x))
+#for i in range(1,training_data.shape[1]):
+#    training_data[f'N_{i}']=training_data[f'X_{i}'].apply(lambda x: 1 if x == 0 else (0 if x == 1 else x))
+#training_data['yy'] = training_data['y'].apply(lambda x: 1 if x == 0 else (0 if x == 1 else x))
 #Displaying the final DataFrame.
 print(training_data)
 
 #Apriori
 #######################################################################################################################################
 #I use Apriori to extract association rules without the class variables.
-df_filtered = training_data.drop(columns=['y', 'yy'])
-min_support = 0.1
+#df_filtered = training_data.drop(columns=['y', 'yy'])
+df_filtered = training_data.drop(columns=['y'])
+min_support = 0.5
 min_confidence = 1
 max_length=3
-start_time = time.time()
-frequent_itemsets, rules = apriori_association_rules.aprioris(df_filtered, min_support, min_confidence, max_length)
-end_time = time.time()
-elapsed_time_aprioris = (end_time - start_time)
-rules_list=[]
-for antecedent, consequent,_ in rules:
-    antecedent=apriori_association_rules.convert(antecedent)
-    consequent=apriori_association_rules.convert(consequent)
-    rules_list.append((antecedent,consequent))
-# Display the number of rules generated.
-print(f"Nombre de règles: {len(rules_list)}")
-rules_list2=[]
-for antecedent, consequent in rules_list:
-    if len(consequent) > 1:
-         for single_consequent in consequent:
-             rules_list2.append((antecedent, (single_consequent,)))  # Add each consequent individually.
-    else:
-         rules_list2.append((antecedent, consequent))  #If there is only one element, add it as is.
+print("Start madelaine ...")
+madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=120)
+print("End madelaine time: ", madelaine_time)
 
-print(f"Nombre de règles: {len(rules_list2)}")
+# Display the number of rules generated.
+print(f"Nombre de règles: {len(rules)}")
 print("###########################################")
-theorie2=apriori_association_rules.transform_tuples(rules_list2)
-print(len(theorie2))
-print("teille theorie,",len(rf_explainer.get_theory()))
-print('taillethorie2',len(theorie2))
+theory_association_rules=apriori_association_rules.rules_to_clauses(rules)
+theory_initial = rf_explainer.get_theory()
+
+print('len theory_initial: ',len(theory_initial))
+print("len theory_association_rules: ",len(theory_association_rules))
+theory_not_subsumed = apriori_association_rules.remove_subsumed(theory_initial+theory_association_rules)
+print("len theory_not_subsumed: ",len(theory_not_subsumed))
+
 ############################################################################################################"
 # Choose 100 instances on which we will extract majority explanations and see the number of excluded instances.
 good_instances = []
 glucose = Glucose3()
 nb_instances = 100
 nb_instances_excluded = 0
-for i in theorie2:
-    glucose.add_clause(i)
-for i in rf_explainer.get_theory():
+for i in theory_not_subsumed:
     glucose.add_clause(i)
 for id_instance,instance_dict in enumerate(binarized_validation):
     instance_dt = instance_dict[:-1]
@@ -118,8 +107,9 @@ for i in good_instances:
 
 moreasen1=len_reason/len(good_instances)
 #We add the second theory to our explainer
-for i in theorie2:
-    rf_explainer.add_clause_to_theory(i)
+rf_explainer = Explainer.initialize(rf_model)
+for clause in theory_not_subsumed:
+    rf_explainer.add_clause_to_theory(clause)
 
 len_reason_theorie2=0
 nb_is_not_reason2=0
@@ -160,7 +150,9 @@ for t, t1 in zip(treasean, treasean1):
 #Recording the extracted logs.
 data_ = {
     "dataset_name": name,
-    "theorie2": theorie2,
+    "theory_initial": len(theory_initial),
+    "theory_association_rules": len(theory_association_rules),
+    "theory_not_subsumed": len(theory_not_subsumed),
     "confidence":min_confidence,
     "support":min_support,
     "nb_instances_excluded":nb_instances_excluded,
@@ -173,11 +165,14 @@ data_ = {
     "Number_of_equal_reasons_after_adding_theory": count_eq,
     "Number_of_is_not_reason_before_adding_new_clauses": nb_is_not_reason,
     "Number_of_is_not_reason_after_adding_new_clauses ": nb_is_not_reason2,
-    "elapsed_time_aprioris":elapsed_time_aprioris,
+    "elapsed_time_aprioris":madelaine_time,
     "elapsed_time_majoritary_reason1":elapsed_time_majoritary_reason1,
     "elapsed_time_majoritary_reason2":elapsed_time_majoritary_reason2,
 
 }
+
+print("###########################################")
+print(data_)
 # Writing to a JSON file.
 file_name = name
 with open(file_name + ".json", "w") as file_json:
