@@ -3,9 +3,6 @@ import apriori_classement_rules
 from pyxai import Learning, Explainer, Tools ,Builder
 from sklearn.model_selection import train_test_split
 import pandas as pd
-from mlxtend.frequent_patterns import fpgrowth
-# from mlxtend.frequent_patterns import apriori
-from mlxtend.frequent_patterns import association_rules
 from pysat.solvers import Glucose3
 import matplotlib
 matplotlib.use('Qt5Agg')  # Choisit le backend Qt5
@@ -62,9 +59,6 @@ labels=(rf_learner.labels_to_values(label_validation))
 
 rf_learner1 = Learning.Scikitlearn(training_data, learner_type=Learning.CLASSIFICATION)
 #I add the negation of the features to extract negative association rules.
-for i in range(1,training_data.shape[1]):
-    training_data[f'N_{i}']=training_data[f'X_{i}'].apply(lambda x: 1 if x == 0 else (0 if x == 1 else x))
-training_data['yy'] = training_data['y'].apply(lambda x: 1 if x == 0 else (0 if x == 1 else x))
 # We create K fold cross validation models
 rf_models = rf_learner1.evaluate(method=Learning.K_FOLDS, output=Learning.RF,seed=0,n_estimators=4)
 print("2")
@@ -133,31 +127,27 @@ for i, rf_model in enumerate(rf_models) :
 #apriori
 ##############################################################################################################
 
-rules_to_exclude=[]
-min_support = 0.0005
-min_confidence = 1
-e=3
-d=3
 start_time = time.time()
-# frequent_itemsets, rules = apriori(df, min_support, min_confidence, rules_to_exclude[0])
-frequent_itemsets, rules = apriori_classement_rules.apriori(training_data, min_support, min_confidence, e,d,rules_to_exclude)
+madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=120)
 end_time = time.time()
 elapsed_time_aprioris = (end_time - start_time)
 association_dict = {}
 antecedents=[]
 consequents=[]
-for antecedent, consequent,_ in rules:
-    antecedent=apriori_classement_rules.convert(antecedent)
-    consequent=apriori_classement_rules.convert(consequent)
+for antecedent, consequent in rules:
     association_dict[antecedent] = consequent
 association_dict_copy = dict(association_dict)
 new_association_dict = dict(association_dict)
+print(new_association_dict)
 nb_rules=[]
 #simplification
 # Parcours du dictionnaire
 for antecedent, consequent in association_dict.items():
     for clause in clauses:
         if clause[0][0] in list((antecedent)) and clause[1][0] in list(antecedent):
+            print("antecedent",antecedent)
+            print("a supprimer",clause[1][0])
+            print(new_association_dict[antecedent])
             new_association_dict = apriori_classement_rules.remove_element_from_key(new_association_dict, antecedent, clause[1][0])
 print("nombre de régles extraire",len(association_dict_copy))
 nb_rules.append(len(association_dict_copy))
@@ -181,10 +171,11 @@ print("nb de regles apres généralisation:",len(new_association_dict))
 nb_rules.append(len(new_association_dict))
 class_association_dict = {}
 class_association_dict0={}
+y=nb_features+1
 for antecedent, consequent in new_association_dict.items():
-    if ('y' in consequent):
+    if (y == consequent):
         class_association_dict[antecedent] = consequent
-    if ('yy' in consequent):
+    if (-y == consequent):
         class_association_dict0[antecedent] = consequent
 
 print("nombre regles de classement:",len(class_association_dict)+len(class_association_dict0))
@@ -260,3 +251,5 @@ data_ = {
 # Writing the data to the JSON file
 with open(name + ".json", 'w') as file_json:
     json.dump(data_, file_json)
+
+print("accuracy_after_rectification_for_each_rule",precision_random_forest_after_rectification_for_all_random_forest)

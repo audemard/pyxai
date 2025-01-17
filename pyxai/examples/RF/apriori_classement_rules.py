@@ -1,5 +1,9 @@
-from pyxai import Builder
+import pandas as pd
 from itertools import combinations
+import time
+from mybitset import BitSet
+from pyxai.sources.core.tools.encoding import CNF, CNFencoding
+from pyxai import Builder
 def list_to_tuple_pairs(lst):
     if len(lst) % 2 != 0:
         raise ValueError("La liste doit contenir un nombre pair d'éléments.")
@@ -75,6 +79,8 @@ def generelise(rule1, rule2,valeur1,valeur2):
     """
     Check if two rules are in conflict
     """
+    rule1 = set(rule1)
+    rule2 = set(rule2)
     # Vérifie si les conditions des règles sont les mêmes
     if valeur1==valeur2:
         if rule1.issubset(rule2):
@@ -92,7 +98,6 @@ def genereliseclassement(rule1, rule2,valeur1,valeur2):
         return True
     return False
 
-
 def remove_element_from_key(dictionary, key, element_to_remove):
     """
     Supprime un élément spécifique d'une clé dans un dictionnaire et crée une nouvelle clé avec la valeur associée à la clé d'origine.
@@ -108,7 +113,7 @@ def remove_element_from_key(dictionary, key, element_to_remove):
     # Vérifier si la clé existe dans le dictionnaire
     if key in dictionary:
         # Créer une nouvelle clé sans l'élément à supprimer
-        new_key = key - frozenset([element_to_remove])
+        new_key = tuple(x for x in key if x != element_to_remove)
         # Copier la valeur associée à la clé d'origine
         value = dictionary[key]
         # Supprimer l'ancienne clé du dictionnaire
@@ -118,84 +123,298 @@ def remove_element_from_key(dictionary, key, element_to_remove):
     # else:
     #     print("La clé spécifiée n'existe pas dans le dictionnaire.")
     return dictionary
+# Function to transform the tuples
+def rules_to_clauses(rules):
+    clauses = []
+    for antecedent, consequent in rules:
+        # Negation of the first tuple and concatenation with the second
+        negated_antecedent = tuple(-x for x in antecedent)
+        # Concatenate the transformed first tuple with the second tuple.
+        clause = negated_antecedent + (consequent, )
+        clauses.append(clause)  
+    return clauses
 
-#Apriori
-##########################################################################################################
-def generate_candidates(itemsets, length,d,target_features,e):
-    candidates = set()
-    for itemset1 in itemsets:
-        for itemset2 in itemsets:
-            candidate = itemset1.union(itemset2)
-            if len(candidate) == length:
-                if length==d:
-                    if 'y' in candidate or 'yy' in candidate:
-                        candidates.add(candidate)
-                else:
-                     candidates.add(candidate)
-    return candidates
+def remove_subsumed(cnf):
+    cnf = sorted(cnf, key=lambda clause: len(clause))
+    subsumed = [False for _ in range(len(cnf) + 1)]
+    flags = [False for _ in range(CNFencoding.compute_max_id_variable(cnf) + 1)]
+    for i, clause in enumerate(cnf):
+        if subsumed[i]:
+            continue
+        for lit in clause:
+            flags[abs(lit)] = True
+        for j in range(i + 1, len(cnf)):
+            nLiteralsInside = tuple(flags[abs(lit)] for lit in cnf[j]).count(True)
+            if nLiteralsInside == len(clause):
+                subsumed[j] = True
+        for lit in clause:
+            flags[abs(lit)] = False
+    return CNF([clause for i, clause in enumerate(cnf) if not subsumed[i]])
 
-def get_frequent_itemsets(transactions, candidates, min_support):
-    itemset_counts = {itemset: 0 for itemset in candidates}
+#Convert the columns into numbers.
+def convert(antecedent):
+    converted_antecedent = []
+    for item in antecedent:
+        if 'X_' in item:
+            converted_antecedent.append(int(item.replace('X_', '')))
+        elif 'N_' in item:
+            converted_antecedent.append(-int(item.replace('N_', '')))
+        else:
+            converted_antecedent.append(int(item))  # Si l'élément n'a ni 'X_' ni 'N_'
+    return converted_antecedent
+
+def generate_candidates(itemsets, length):
+    # Generate candidates by combining frequent itemsets.
+    return {
+        itemsets[i].union(itemsets[j])
+        for i in range(len(itemsets))
+        for j in range(i+1, len(itemsets))
+        if len(itemsets[i].union(itemsets[j])) == length
+    }
+    
+    
+    return [frozenset(combination) for combination in combinations(itemsets, length)]
+
+def get_frequent_itemsets_old(transactions, candidates, min_support):
+    # Count the occurrences of the candidates in the transactions.
+    itemset_counts = {}
     for transaction in transactions:
         for candidate in candidates:
             if candidate.issubset(transaction):
+                if candidate not in itemset_counts:
+                    itemset_counts[candidate] = 0
                 itemset_counts[candidate] += 1
 
     num_transactions = len(transactions)
-    frequent_itemsets = {itemset for itemset, count in itemset_counts.items() if count / num_transactions >= min_support}
-    return frequent_itemsets, {itemset: count / num_transactions for itemset, count in itemset_counts.items() if count / num_transactions >= min_support}
+    frequent_itemsets = {
+        itemset for itemset, count in itemset_counts.items()
+        if count / num_transactions >= min_support
+    }
+    itemset_supports = {
+        itemset: count / num_transactions
+        for itemset, count in itemset_counts.items()
+        if count / num_transactions >= min_support
+    }
+    return frequent_itemsets, itemset_supports
 
-def generate_rules(frequent_itemsets, itemset_supports, min_confidence, rules_to_exclude):
+def get_frequent_itemsets(transactions, candidates, min_support):
+    # Count the occurrences of the candidates in the transactions.
+    #itemset_counts = {itemset: 0 for itemset in candidates}
+    itemset_counts = [0]*len(candidates)
+    #print("len itemset_counts:", len(itemset_counts))
+    #print("Start get_frequent_itemsets")
+
+
+    for transaction in transactions:
+        for i, candidate in enumerate(candidates):
+            if candidate.issubset(transaction):
+                itemset_counts[i] += 1
+    
+    num_transactions = len(transactions)
+    
+    frequent_itemsets = [
+        itemset for i, itemset in enumerate(candidates)
+        if itemset_counts[i] / num_transactions >= min_support
+    ]
+
+    #frequent_itemsets = {
+    #    itemset for itemset, count in itemset_counts.items()
+    #    if count / num_transactions >= min_support
+    #}
+
+    itemset_supports = {
+        itemset: itemset_counts[i] / num_transactions
+        for i, itemset in enumerate(candidates)
+        if itemset_counts[i] / num_transactions >= min_support
+    }
+
+    #itemset_supports = {
+    #    itemset: count / num_transactions
+    #    for itemset, count in itemset_counts.items()
+    #    if count / num_transactions >= min_support
+    #}
+    #print("time get_frequent_itemsets: ", time.time() - st)
+    #print("End loop get_frequent_itemsets")
+    return frequent_itemsets, itemset_supports
+
+
+def generate_rules(frequent_itemsets, itemset_supports, min_confidence):
+    print("Start generate_rules")
     rules_dict = {}
     for itemset in frequent_itemsets:
         if len(itemset) > 1:
-            if 'y' in itemset or 'yy' in itemset:
                 for subset in map(frozenset, combinations(itemset, len(itemset) - 1)):
                     antecedent = subset
                     consequent = itemset - antecedent
+                    if itemset in itemset_supports and antecedent in itemset_supports:
+                        confidence = itemset_supports[itemset] / itemset_supports[antecedent]
+                        if confidence >= min_confidence:
+                            if antecedent in rules_dict:
+                                rules_dict[antecedent] = rules_dict[antecedent].union(consequent)
+                            else:
+                                rules_dict[antecedent] = consequent
 
-                    # Exclure les règles spécifiques
-                    if (antecedent, consequent) in rules_to_exclude:
-                        continue
-                    if 'y' in consequent or 'yy' in consequent:
-                        if itemset in itemset_supports and antecedent in itemset_supports:
-                            confidence = itemset_supports[itemset] / itemset_supports[antecedent]
-                            if confidence >= min_confidence:
-                                if antecedent in rules_dict:
-                                    rules_dict[antecedent] = rules_dict[antecedent].union(consequent)
-                                else:
-                                    rules_dict[antecedent] = consequent
-
-    # Générer les règles seulement si la combinaison existe dans itemset_supports
+    # Generate the rules only if the combination exists in itemset_supports.
     rules = [(antecedent, consequent, itemset_supports[antecedent | consequent] / itemset_supports[antecedent])
              for antecedent, consequent in rules_dict.items() if antecedent | consequent in itemset_supports]
     return rules
+import sys
 
-def apriori(df, min_support, min_confidence,e,d,rules_to_exclude=None):
-    if rules_to_exclude is None:
-        rules_to_exclude = []
+def str_to_class(classname):
+    return getattr(sys.modules[__name__], classname)
 
-    # Convertir les règles à exclure en frozenset pour faciliter la comparaison
-    rules_to_exclude = [(frozenset(antecedent), frozenset(consequent)) for antecedent, consequent in rules_to_exclude]
-    transactions = df.apply(lambda row: frozenset(row[row == 1].index), axis=1).tolist()
 
-    candidates = {frozenset([item]) for item in df.columns}
-    frequent_itemsets, itemset_supports = get_frequent_itemsets(transactions, candidates, min_support)
-    all_frequent_itemsets = frequent_itemsets.copy()
+def madelaine(database, time_limit=3600):
+    
+    #Compute: key -> value
+    # dict_values_0: index_feature -> list of indexes of instances where the index_feature value is 0
+    # dict_values_1: index_feature -> list of indexes of instances where the index_feature value is 1 
+    total_time = time.time()
 
-    k = 2
-    while k<=e:
-        # candidates = generate_candidates(frequent_itemsets, k)
-        candidates = generate_candidates(frequent_itemsets, k,d, ['y', 'yy'],e)
-        print("okijf")
-        print(len(candidates))
-        if not candidates:
+    database_tuples = tuple(database.itertuples(index=False, name=None))
+    n_instances = len(database_tuples)
+    n_features = len(database_tuples[0])
+    print("n_instances:", n_instances)
+    print("n_features:", n_features)
+    dict_values_0 = {i:[] for i in range(1, n_features+1)}
+    dict_values_1 = {i:[] for i in range(1, n_features+1)}
+
+    for index_instance, instance in enumerate(database_tuples):
+        for index_feature, value in enumerate(instance):
+            dict_values_0[index_feature+1].append(index_instance) if value == 0 else dict_values_1[index_feature+1].append(index_instance)
+
+    for i in range(1, n_features+1):
+        dict_values_0[i] = set(dict_values_0[i])
+        dict_values_1[i] = set(dict_values_1[i])
+    
+    #for k == 2: generate all a->b rules
+    candidates = tuple(combinations(range(1, n_features), 1))
+
+    print("len candidates (k=2):", len(candidates))
+
+    #Test all candidates: test a -> b, not(a) -> b, a -> not(b) and not(a) -> not(b)  
+    rules = []
+    for candidate in candidates:
+        a,y= candidate[0],n_features
+        if len(dict_values_1[a].intersection(dict_values_0[y])) == 0:
+            # for a -> b: there is no (a -> not b) in the instances
+            rules.append(((a,), y))
+        elif len(dict_values_1[a].intersection(dict_values_1[y])) == 0:
+            # for a -> not b: no a -> b
+            rules.append(((a,), -y))
+
+        if len(dict_values_0[a].intersection(dict_values_0[y])) == 0:
+            # for not a -> b: no not a -> not b
+            rules.append(((-a,), y))
+        elif len(dict_values_0[a].intersection(dict_values_1[y])) == 0:
+            # for not a -> not b: no not a -> b
+            rules.append(((-a,), -y))
+    
+    print("n rules (k=2):", len(rules))
+    #print("2k rules: ", rules)
+    #for k == 3: generate all a and b -> c rules
+    candidates = tuple(combinations(range(1, n_features), 2))
+    print("len candidates (k=3):", len(candidates))
+    #Test all candidates:
+    # a and b => c 
+    # a and b => not c 
+    # not a and b => c 
+    # not a and b => not c 
+
+    for i, candidate in enumerate(candidates):
+        
+        if i % 10000 == 0 and ((time.time() - total_time) > time_limit or len(rules) > 500000):
             break
-        frequent_itemsets, supports = get_frequent_itemsets(transactions, candidates, min_support)
-        itemset_supports.update(supports)
-        all_frequent_itemsets.update(frequent_itemsets)
-        k += 1
+        a, b = candidate[0], candidate[1]
+        intersection_a_b = dict_values_1[a].intersection(dict_values_1[b])
+        intersection_not_a_b = dict_values_0[a].intersection(dict_values_1[b])
+        intersection_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
+        intersection_not_a_not_b=dict_values_0[a].intersection(dict_values_0[b])
+        # a and b => c: no a and b => not c 
+        if len(intersection_a_b.intersection(dict_values_0[y])) == 0:
+            rules.append(((a, b), y))
+        # a and b => not c: no a and b => c 
+        elif len(intersection_a_b.intersection(dict_values_1[y])) == 0:
+            rules.append(((a, b), -y))
+        
+        # not a and b => c: no not a and b => not c 
+        if len(intersection_not_a_b.intersection(dict_values_0[y])) == 0:
+            rules.append(((-a, b), y))
+        # not a and b => not c: no not a and b => c 
+        elif len(intersection_not_a_b.intersection(dict_values_1[y])) == 0:
+            rules.append(((-a, b), -y))
+        
+        # a and not b => c: no a and not b => not c 
+        if len(intersection_a_not_b.intersection(dict_values_0[y])) == 0:
+            rules.append(((a, -b), y))
+        # a and not b => not c: no a and not b => c 
+        elif len(intersection_a_not_b.intersection(dict_values_1[y])) == 0:
+            rules.append(((a, -b), -y))
 
-    rules = generate_rules(all_frequent_itemsets, itemset_supports, min_confidence, rules_to_exclude)
-    # print(rules)
-    return all_frequent_itemsets, rules
+        # not a and not b => c: no not a and not b => not c
+        if len(intersection_not_a_not_b.intersection(dict_values_0[y])) == 0:
+            rules.append(((-a, -b), y))
+        # not a and not b => -c: no not a and not b => c
+        elif len(intersection_not_a_not_b.intersection(dict_values_1[y])) == 0:
+            rules.append(((-a, -b), -y))
+        
+    print("rules:", rules[0:3])
+    print("total n rules:", len(rules))
+    return (time.time() - total_time), rules
+
+    
+
+        
+
+
+
+
+
+# def aprioris(df, min_support, min_confidence,max_length,rules_to_exclude=None):
+#     if rules_to_exclude is None:
+#         rules_to_exclude = []
+
+#     # Convert the rules to exclude into a frozenset to facilitate comparison.
+#     rules_to_exclude = [(frozenset(antecedent), frozenset(consequent)) for antecedent, consequent in rules_to_exclude]
+#     size_bitset = len(df.columns) + 1
+#     transactions = df.apply(lambda row: frozenset(row[row == 1].index), axis=1).tolist()
+#     transactions_bitset = []
+#     for transaction in transactions:
+#         transactions_bitset.append(BitSet(size_bitset, [df.columns.get_loc(element) for element in transaction]))
+#     transactions = transactions_bitset
+#     #transactions = df.apply(lambda row: BitSet(size_bitset, row[row == 1].index), axis=1).tolist()
+
+
+#     #candidates = {frozenset([item]) for item in df.columns}
+#     candidates = [BitSet(size_bitset, [i]) for i in range(len(df.columns))]
+#     print("candidates:", len(candidates))
+    
+#     print("transactions:", len(transactions_bitset))
+
+#     #print("candidates:", candidates)
+    
+#     frequent_itemsets, itemset_supports = get_frequent_itemsets(transactions, candidates, min_support)
+    
+#     print("frequent_itemsets:", len(frequent_itemsets))
+    
+#     all_frequent_itemsets = frequent_itemsets.copy()
+
+#     k = 2
+#     while k<=max_length:
+#         print("aprioris loop: ", k)
+#         st = time.time()
+#         candidates = generate_candidates(frequent_itemsets, k)
+#         print("candidates:", len(candidates))
+#         print("time candidates: ", time.time() - st)
+        
+#         if not candidates:
+#             break
+#         frequent_itemsets, supports = get_frequent_itemsets(transactions, candidates, min_support)
+#         print("frequent_itemsets:", len(frequent_itemsets))
+#         itemset_supports.update(supports)
+#         all_frequent_itemsets.update(frequent_itemsets)
+#         k += 1
+#         print("time loop: ", time.time() - st)
+        
+#     rules = generate_rules(all_frequent_itemsets, itemset_supports, min_confidence)
+#     return all_frequent_itemsets, rules
