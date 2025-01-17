@@ -1,6 +1,7 @@
 import pandas as pd
 from itertools import combinations
 import time
+import random
 from mybitset import BitSet
 from pyxai.sources.core.tools.encoding import CNF, CNFencoding
 # Function to transform the tuples
@@ -144,11 +145,13 @@ def str_to_class(classname):
     return getattr(sys.modules[__name__], classname)
 
 
-def madelaine(database, time_limit=3600):
+def madelaine(database, *, time_limit=3600, n_max_rules=200000):
     
     #Compute: key -> value
     # dict_values_0: index_feature -> list of indexes of instances where the index_feature value is 0
     # dict_values_1: index_feature -> list of indexes of instances where the index_feature value is 1 
+
+    # dict_hash: multiplication of feature -> list of rules
     total_time = time.time()
 
     database_tuples = tuple(database.itertuples(index=False, name=None))
@@ -158,6 +161,13 @@ def madelaine(database, time_limit=3600):
     print("n_features:", n_features)
     dict_values_0 = {i:[] for i in range(1, n_features+1)}
     dict_values_1 = {i:[] for i in range(1, n_features+1)}
+    
+    hash_x_or_y = [False]*((n_features+1)*n_features+1)
+    hash_not_x_or_y = [False]*((n_features+1)*n_features+1)
+    hash_x_or_not_y = [False]*((n_features+1)*n_features+1)
+    hash_not_x_or_not_y = [False]*((n_features+1)*n_features+1)
+
+
 
     for index_instance, instance in enumerate(database_tuples):
         for index_feature, value in enumerate(instance):
@@ -173,76 +183,111 @@ def madelaine(database, time_limit=3600):
     print("len candidates (k=2):", len(candidates))
 
     #Test all candidates: test a -> b, not(a) -> b, a -> not(b) and not(a) -> not(b)  
+    rules_2 = []
     rules = []
+
+    n_tests = 0
     for candidate in candidates:
         a, b = candidate[0], candidate[1]
-        
+        key = a * b
         if len(dict_values_1[a].intersection(dict_values_0[b])) == 0:
             # for a -> b: there is no (a -> not b) in the instances
-            rules.append(((a,), b))
+            rules_2.append(((a,), b))
+            hash_not_x_or_y[key] = True
         elif len(dict_values_1[a].intersection(dict_values_1[b])) == 0:
             # for a -> not b: no a -> b
-            rules.append(((a,), -b))
-
+            rules_2.append(((a,), -b))
+            hash_not_x_or_not_y[key] = True
         if len(dict_values_0[a].intersection(dict_values_0[b])) == 0:
             # for not a -> b: no not a -> not b
-            rules.append(((-a,), b))
+            rules_2.append(((-a,), b))
+            hash_x_or_y[key] = True
         elif len(dict_values_0[a].intersection(dict_values_1[b])) == 0:
             # for not a -> not b: no not a -> b
-            rules.append(((-a,), -b))
+            rules_2.append(((-a,), -b))
+            hash_x_or_not_y[key] = True
+        
+        n_tests += 1
     
-    print("n rules (k=2):", len(rules))
-    print("2k rules: ", rules)
-    exit(0)
+    print("n rules (k=2):", len(rules_2))
     #for k == 3: generate all a and b -> c rules
-    candidates = tuple(combinations(range(1, n_features+1), 3))
-    print("len candidates (k=3):", len(candidates))
+    #random.shuffle(list_combination)
     #Test all candidates:
     # a and b => c 
     # a and b => not c 
     # not a and b => c 
     # not a and b => not c 
-
-    for i, candidate in enumerate(candidates):
+    for candidate in combinations(range(1, n_features+1), 3):
         
-        if i % 10000 == 0 and ((time.time() - total_time) > time_limit or len(rules) > 500000):
+        if len(rules) % 100 == 0 and ((time.time() - total_time) > time_limit):
             break
         a, b, c = candidate[0], candidate[1], candidate[2]  
+        
         intersection_a_b = dict_values_1[a].intersection(dict_values_1[b])
         intersection_not_a_b = dict_values_0[a].intersection(dict_values_1[b])
         intersection_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
         intersection_not_a_not_b=dict_values_0[a].intersection(dict_values_0[b])
+
+        key_a_b, key_b_c, key_a_c = a * b, b * c, a * c
+        
+        support_a_b_c = intersection_a_b.intersection(dict_values_1[c])
+        support_a_b_not_c = intersection_a_b.intersection(dict_values_0[c])
+        support_not_a_b_c = intersection_not_a_b.intersection(dict_values_1[c])
+        support_not_a_b_not_c = intersection_not_a_b.intersection(dict_values_0[c])
+        support_a_not_b_c = intersection_a_not_b.intersection(dict_values_1[c])
+        support_a_not_b_not_c = intersection_a_not_b.intersection(dict_values_0[c])
+        support_not_a_not_b_c = intersection_not_a_not_b.intersection(dict_values_1[c])
+        support_not_a_not_b_not_c = intersection_not_a_not_b.intersection(dict_values_0[c])
+    
+
         # a and b => c: no a and b => not c 
-        if len(intersection_a_b.intersection(dict_values_0[c])) == 0:
-            rules.append(((a, b), c))
+        if len(support_a_b_not_c) == 0:
+            if not (hash_not_x_or_not_y[key_a_b] or hash_not_x_or_y[key_a_c] or hash_not_x_or_y[key_b_c]): 
+                rules.append((((a, b), c), len(support_a_b_c)))
         # a and b => not c: no a and b => c 
-        elif len(intersection_a_b.intersection(dict_values_1[c])) == 0:
-            rules.append(((a, b), -c))
+        elif len(support_a_b_c) == 0:
+            if not (hash_not_x_or_not_y[key_a_b] or hash_not_x_or_not_y[key_a_c] or hash_not_x_or_not_y[key_b_c]): 
+                rules.append((((a, b), -c), len(support_a_b_not_c)))
         
         # not a and b => c: no not a and b => not c 
-        if len(intersection_not_a_b.intersection(dict_values_0[c])) == 0:
-            rules.append(((-a, b), c))
+        if len(support_not_a_b_not_c) == 0:
+            if not (hash_x_or_not_y[key_a_b] or hash_x_or_y[key_a_c] or hash_not_x_or_y[key_b_c]):
+                rules.append((((-a, b), c), len(support_not_a_b_c)))
         # not a and b => not c: no not a and b => c 
-        elif len(intersection_not_a_b.intersection(dict_values_1[c])) == 0:
-            rules.append(((-a, b), -c))
+        elif len(support_not_a_b_c) == 0:
+            if not (hash_x_or_not_y[key_a_b] or hash_x_or_not_y[key_a_c] or hash_not_x_or_not_y[key_b_c]):
+                rules.append((((-a, b), -c), len(support_not_a_b_not_c)))
         
         # a and not b => c: no a and not b => not c 
-        if len(intersection_a_not_b.intersection(dict_values_0[c])) == 0:
-            rules.append(((a, -b), c))
+        if len(support_a_not_b_not_c) == 0:
+            if not (hash_not_x_or_y[key_a_b] or hash_not_x_or_y[key_a_c] or hash_x_or_y[key_b_c]):
+                rules.append((((a, -b), c), len(support_a_not_b_c)))
         # a and not b => not c: no a and not b => c 
-        elif len(intersection_a_not_b.intersection(dict_values_1[c])) == 0:
-            rules.append(((a, -b), -c))
+        elif len(support_a_not_b_c) == 0:
+            if not (hash_not_x_or_y[key_a_b] or hash_not_x_or_not_y[key_a_c] or hash_x_or_not_y[key_b_c]):
+                rules.append((((a, -b), -c), len(support_a_not_b_not_c)))
 
         # not a and not b => c: no not a and not b => not c
-        if len(intersection_not_a_not_b.intersection(dict_values_0[c])) == 0:
-            rules.append(((-a, -b), c))
+        if len(support_not_a_not_b_not_c) == 0:
+            if not (hash_x_or_y[key_a_b] or hash_x_or_y[key_a_c] or hash_x_or_y[key_b_c]):
+                rules.append((((-a, -b), c), len(support_not_a_not_b_c)))
         # not a and not b => -c: no not a and not b => c
-        elif len(intersection_not_a_not_b.intersection(dict_values_1[c])) == 0:
-            rules.append(((-a, -b), -c))
+        elif len(support_not_a_not_b_c) == 0:
+            if not (hash_x_or_y[key_a_b] or hash_x_or_not_y[key_a_c] or hash_x_or_not_y[key_b_c]):
+                rules.append((((-a, -b), -c), len(support_not_a_not_b_not_c)))
         
-    print("rules:", rules[0:3])
-    print("total n rules:", len(rules))
+        n_tests += 1
     
+    
+    
+    if len(rules) > n_max_rules:
+        rules = sorted(rules, key=lambda x: x[1], reverse=True)[:n_max_rules]
+    print(rules[0:20])
+
+    rules = [r[0] for r in rules] + rules_2
+    print("total n tests:", n_tests)
+    print("total n rules:", len(rules))
+
     return (time.time() - total_time), rules
 
     

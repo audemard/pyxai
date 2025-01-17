@@ -2,20 +2,21 @@ import json
 from pyxai import Learning, Explainer, Tools
 import pandas as pd
 from pysat.solvers import Glucose3
-import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 import apriori_association_rules
 import time
 ##################################################################################################################################
 # I load the dataset
 
-
+n_max_rules = int(Tools.Options.types)
+print(n_max_rules)
 name=Tools.Options.dataset 
 data = pd.read_csv(name+'.csv')
 # Split the DataFrame into training and test sets
 train_df, validation_df = train_test_split(data, test_size=0.3, random_state=42)
 glucose = Glucose3()
 
+print("Divide dataset")
 #I train my model on the training set.
 rf_learner = Learning.Scikitlearn(train_df, learner_type=Learning.CLASSIFICATION)
 rf_model = rf_learner.evaluate(method=Learning.HOLD_OUT, output=Learning.RF,seed=1)
@@ -52,7 +53,7 @@ min_support = 0.5
 min_confidence = 1
 max_length=3
 print("Start madelaine ...")
-madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=120)
+madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=3600, n_max_rules=n_max_rules)
 print("End madelaine time: ", madelaine_time)
 
 # Display the number of rules generated.
@@ -63,16 +64,17 @@ theory_initial = rf_explainer.get_theory()
 
 print('len theory_initial: ',len(theory_initial))
 print("len theory_association_rules: ",len(theory_association_rules))
-theory_not_subsumed = apriori_association_rules.remove_subsumed(theory_initial+theory_association_rules)
-print("len theory_not_subsumed: ",len(theory_not_subsumed))
+#theory_not_subsumed = apriori_association_rules.remove_subsumed(theory_association_rules)
+#print("len theory_not_subsumed: ",len(theory_not_subsumed))
 
 ############################################################################################################"
 # Choose 100 instances on which we will extract majority explanations and see the number of excluded instances.
+print("Chooses instances")
 good_instances = []
 glucose = Glucose3()
 nb_instances = 100
 nb_instances_excluded = 0
-for i in theory_not_subsumed:
+for i in theory_association_rules:
     glucose.add_clause(i)
 for id_instance,instance_dict in enumerate(binarized_validation):
     instance_dt = instance_dict[:-1]
@@ -92,6 +94,7 @@ majoritary_feature_reason1=[]
 elapsed_time_majoritary_reason1 = []
 ############################################################################################################"
 #We extract the majority explanations on the instances chosen before adding the second theory.
+print("Compute majoritary normal")
 for i in good_instances:
     start_time = time.time()
     rf_explainer.set_instance(i)
@@ -103,12 +106,13 @@ for i in good_instances:
     treasean.append(len(reason))
     len_reason+=len(reason)
     end_time = time.time()
+    print("time: ", time.time() -start_time, "classic reason: ", len(reason))
     elapsed_time_majoritary_reason1.append(end_time - start_time)
 
 moreasen1=len_reason/len(good_instances)
 #We add the second theory to our explainer
 rf_explainer = Explainer.initialize(rf_model)
-for clause in theory_not_subsumed:
+for clause in theory_association_rules:
     rf_explainer.add_clause_to_theory(clause)
 
 len_reason_theorie2=0
@@ -117,6 +121,8 @@ treasean1=[]
 majoritary_literal_reason2=[]
 majoritary_feature_reason2=[]
 elapsed_time_majoritary_reason2 = []
+
+print("Compute Majoritary with additional theory")
 # We extract the majority explanations on the instances selected after adding the second theory.
 for i in good_instances:
     start_time = time.time()
@@ -128,12 +134,14 @@ for i in good_instances:
         nb_is_not_reason2+=1
     treasean1.append(len(reason1))
     len_reason_theorie2+=len(reason1)
+    print("time: ", time.time() -start_time, "additional theory reason: ", len(reason))
     end_time = time.time()
     elapsed_time_majoritary_reason2.append(end_time - start_time)
 
 moreasen2=len_reason_theorie2/len(good_instances)
 
 
+print("Compute stats")
 #Traverse both lists simultaneously and compare the sizes of the explanations before and after adding the apriori theory.
 count_inf = 0
 count_sup = 0
@@ -152,7 +160,6 @@ data_ = {
     "dataset_name": name,
     "theory_initial": len(theory_initial),
     "theory_association_rules": len(theory_association_rules),
-    "theory_not_subsumed": len(theory_not_subsumed),
     "confidence":min_confidence,
     "support":min_support,
     "nb_instances_excluded":nb_instances_excluded,
