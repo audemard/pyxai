@@ -53,7 +53,7 @@ min_support = 0.5
 min_confidence = 1
 max_length=3
 print("Start madelaine ...")
-madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=3600, n_max_rules=n_max_rules)
+madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
 print("End madelaine time: ", madelaine_time)
 
 # Display the number of rules generated.
@@ -72,7 +72,7 @@ print("len theory_association_rules: ",len(theory_association_rules))
 print("Chooses instances")
 good_instances = []
 glucose = Glucose3()
-nb_instances = 100
+nb_instances = 10
 nb_instances_excluded = 0
 for i in theory_association_rules:
     glucose.add_clause(i)
@@ -84,6 +84,7 @@ for id_instance,instance_dict in enumerate(binarized_validation):
         nb_instances_excluded += 1
         continue
     good_instances.append(raw_validation[id_instance])
+    #print(raw_validation[id_instance])
     if len(good_instances) >= nb_instances:
         break
 len_reason=0
@@ -111,7 +112,7 @@ for i in good_instances:
 
 moreasen1=len_reason/len(good_instances)
 #We add the second theory to our explainer
-rf_explainer = Explainer.initialize(rf_model)
+# rf_explainer = Explainer.initialize(rf_model)
 for clause in theory_association_rules:
     rf_explainer.add_clause_to_theory(clause)
 
@@ -134,7 +135,7 @@ for i in good_instances:
         nb_is_not_reason2+=1
     treasean1.append(len(reason1))
     len_reason_theorie2+=len(reason1)
-    print("time: ", time.time() -start_time, "additional theory reason: ", len(reason))
+    print("time: ", time.time() -start_time, "additional theory reason: ", len(reason1), rf_explainer.to_features(reason1))
     end_time = time.time()
     elapsed_time_majoritary_reason2.append(end_time - start_time)
 

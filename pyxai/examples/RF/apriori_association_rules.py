@@ -118,6 +118,10 @@ def get_frequent_itemsets(transactions, candidates, min_support):
     #print("End loop get_frequent_itemsets")
     return frequent_itemsets, itemset_supports
 
+def binary_to_features(explainer, lit):
+    tmp = explainer.to_features([lit], details=True)
+    return next(iter(tmp))
+
 
 def generate_rules(frequent_itemsets, itemset_supports, min_confidence):
     print("Start generate_rules")
@@ -145,7 +149,7 @@ def str_to_class(classname):
     return getattr(sys.modules[__name__], classname)
 
 
-def madelaine(database, *, time_limit=3600, n_max_rules=200000):
+def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
     
     #Compute: key -> value
     # dict_values_0: index_feature -> list of indexes of instances where the index_feature value is 0
@@ -189,27 +193,47 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000):
     n_tests = 0
     for candidate in candidates:
         a, b = candidate[0], candidate[1]
+        if binary_to_features(explainer, a) == binary_to_features(explainer, b):
+            continue
+        size_before = len(rules_2)
         key = a * b
-        if len(dict_values_1[a].intersection(dict_values_0[b])) == 0:
+        support_a_b = dict_values_1[a].intersection(dict_values_1[b])
+        support_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
+        support_not_a_b = dict_values_0[a].intersection(dict_values_1[b])
+        support_not_a_not_b = dict_values_0[a].intersection(dict_values_0[b])
+
+
+        if len(support_a_not_b) == 0:
             # for a -> b: there is no (a -> not b) in the instances
-            rules_2.append(((a,), b))
+            rules_2.append((((a,), b), len(support_a_b)))
             hash_not_x_or_y[key] = True
-        elif len(dict_values_1[a].intersection(dict_values_1[b])) == 0:
+        elif len(support_a_b) == 0:
             # for a -> not b: no a -> b
-            rules_2.append(((a,), -b))
+            rules_2.append((((a,), -b), len(support_a_not_b)))
             hash_not_x_or_not_y[key] = True
-        if len(dict_values_0[a].intersection(dict_values_0[b])) == 0:
+        if len(support_not_a_not_b) == 0:
             # for not a -> b: no not a -> not b
-            rules_2.append(((-a,), b))
+            rules_2.append((((-a,), b), len(support_not_a_b)))
             hash_x_or_y[key] = True
-        elif len(dict_values_0[a].intersection(dict_values_1[b])) == 0:
+        elif len(support_not_a_b) == 0:
             # for not a -> not b: no not a -> b
-            rules_2.append(((-a,), -b))
+            rules_2.append((((-a,), -b), len(support_not_a_not_b)))
             hash_x_or_not_y[key] = True
-        
+        #if size_before != len(rules_2):
+        #    print("ICI" , binary_to_features(explainer, a), binary_to_features(explainer, b))
         n_tests += 1
-    
-    print("n rules (k=2):", len(rules_2))
+
+    if len(rules_2) > n_max_rules:
+        rules_2 = sorted(rules_2, key=lambda x: x[1], reverse=True)[:n_max_rules]
+    print(rules_2[0:20])
+
+    rules_2 = [r[0] for r in rules_2]
+
+
+
+    print("n rules (k=2):", len(rules_2), rules_2)
+
+
     #for k == 3: generate all a and b -> c rules
     #random.shuffle(list_combination)
     #Test all candidates:
@@ -218,7 +242,7 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000):
     # not a and b => c 
     # not a and b => not c 
     for candidate in combinations(range(1, n_features+1), 3):
-        
+        break
         if len(rules) % 100 == 0 and ((time.time() - total_time) > time_limit):
             break
         a, b, c = candidate[0], candidate[1], candidate[2]  
