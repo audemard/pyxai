@@ -625,8 +625,8 @@ class ExplainerRF(Explainer):
         # Simplify Theory part
         if theory_cnf is None:
             theory_cnf = self.get_model().get_theory(None)
-        else:
-            print("my theorie")
+        #else:
+        #    print("my theorie")
         c_explainer.rectifier_set_theory(self.c_rectifier, tuple(theory_cnf))
         c_explainer.rectifier_simplify_theory(self.c_rectifier)
 

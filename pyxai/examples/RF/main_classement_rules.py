@@ -64,7 +64,7 @@ rf_learner1 = Learning.Scikitlearn(training_data, learner_type=Learning.CLASSIFI
 #I add the negation of the features to extract negative association rules.
 # We create K fold cross validation models
 rf_models = rf_learner1.evaluate(method=Learning.K_FOLDS, output=Learning.RF,seed=0,n_estimators=4)
-print("2")
+#print("2")
 feature_names=rf_learner1.get_details()[0]['feature_names']
 all_scikit = rf_learner1.get_raw_models()
 # Declare the lists and dictionaries that we will use
@@ -74,12 +74,12 @@ X_test=[]
 y_test=[]
 random_forest_depth=[]
 precision_for_each_random_forest=[]
-print("3")
+#print("3")
 # Iterating through the 10 decision tree models created with PyXAI
 yo=[]
 for i, rf_model in enumerate(rf_models) :
     yo.append(rf_model)
-    print("dj")
+    #print("dj")
     # I take scikitLearn model
     clf = all_scikit[i]
     total_nodes = sum(tree.tree_.node_count for tree in clf.estimators_)
@@ -157,20 +157,20 @@ nb_rules.append(len(association_dict_copy))
 print("nombre de regles restante aprés simplification avec theorie",len(new_association_dict))
 
 #généralisation
-keys_to_delete = []  # Liste pour stocker les clés à supprimer
+# keys_to_delete = []  # Liste pour stocker les clés à supprimer
 
-for key1 in new_association_dict:
-    for key2 in new_association_dict:
-        if key1 != key2:
-            if apriori_classement_rules.generelise((key1), (key2),new_association_dict[key1],new_association_dict[key2]):
-                if key2 not in keys_to_delete:
-                    keys_to_delete.append(key2)
+# for key1 in new_association_dict:
+#     for key2 in new_association_dict:
+#         if key1 != key2:
+#             if apriori_classement_rules.generelise((key1), (key2),new_association_dict[key1],new_association_dict[key2]):
+#                 if key2 not in keys_to_delete:
+#                     keys_to_delete.append(key2)
 
 # Supprimer les clés genéralisé du dictionnaire
-for key in keys_to_delete:
-    del new_association_dict[key]
+# for key in keys_to_delete:
+#     del new_association_dict[key]
 # Afficher les règles d'association de classement
-print("nb de regles apres généralisation:",len(new_association_dict))
+# print("nb de regles apres généralisation:",len(new_association_dict))
 ##############################################################################################################
 nb_rules.append(len(new_association_dict))
 class_association_dict = {}
