@@ -195,7 +195,6 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
         a, b = candidate[0], candidate[1]
         if binary_to_features(explainer, a) == binary_to_features(explainer, b):
             continue
-        size_before = len(rules_2)
         key = a * b
         support_a_b = dict_values_1[a].intersection(dict_values_1[b])
         support_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
@@ -225,13 +224,9 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
 
     if len(rules_2) > n_max_rules:
         rules_2 = sorted(rules_2, key=lambda x: x[1], reverse=True)[:n_max_rules]
-    print(rules_2[0:20])
-
     rules_2 = [r[0] for r in rules_2]
 
-
-
-    print("n rules (k=2):", len(rules_2), rules_2)
+    print("n rules (k=2):", len(rules_2))
 
 
     #for k == 3: generate all a and b -> c rules
@@ -242,7 +237,6 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
     # not a and b => c 
     # not a and b => not c 
     for candidate in combinations(range(1, n_features+1), 3):
-        break
         if len(rules) % 100 == 0 and ((time.time() - total_time) > time_limit):
             break
         a, b, c = candidate[0], candidate[1], candidate[2]  

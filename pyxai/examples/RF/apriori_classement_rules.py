@@ -264,7 +264,7 @@ def str_to_class(classname):
     return getattr(sys.modules[__name__], classname)
 
 
-def madelaine(database, time_limit=3600):
+def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
     
     #Compute: key -> value
     # dict_values_0: index_feature -> list of indexes of instances where the index_feature value is 0
@@ -287,30 +287,54 @@ def madelaine(database, time_limit=3600):
         dict_values_0[i] = set(dict_values_0[i])
         dict_values_1[i] = set(dict_values_1[i])
     
+    hash_a_y = [False]*(n_features+1)
+    hash_not_a_y = [False]*(n_features+1)
+    hash_a_not_y = [False]*(n_features+1)
+    hash_not_a_not_y = [False]*(n_features+1)
+
     #for k == 2: generate all a->b rules
     candidates = tuple(combinations(range(1, n_features), 1))
 
     print("len candidates (k=2):", len(candidates))
 
     #Test all candidates: test a -> b, not(a) -> b, a -> not(b) and not(a) -> not(b)  
-    rules = []
-    for candidate in candidates:
-        a,y= candidate[0],n_features
-        if len(dict_values_1[a].intersection(dict_values_0[y])) == 0:
-            # for a -> b: there is no (a -> not b) in the instances
-            rules.append(((a,), y))
-        elif len(dict_values_1[a].intersection(dict_values_1[y])) == 0:
-            # for a -> not b: no a -> b
-            rules.append(((a,), -y))
+    rules_2 = []
+    y = n_features
+    n_tests = 0
 
-        if len(dict_values_0[a].intersection(dict_values_0[y])) == 0:
+    for candidate in candidates:
+        a = candidate[0]
+        
+        support_a_y = dict_values_1[a].intersection(dict_values_1[y])
+        support_a_not_y = dict_values_1[a].intersection(dict_values_0[y])
+        support_not_a_y = dict_values_0[a].intersection(dict_values_1[y])
+        support_not_a_not_y = dict_values_0[a].intersection(dict_values_0[y])
+
+        if len(support_a_not_y) == 0:
+            # for a -> b: there is no (a -> not b) in the instances
+            rules_2.append((((a,), y),support_a_y))
+            hash_a_y[a] = True
+        elif len(support_a_y) == 0:
+            # for a -> not b: no a -> b
+            rules_2.append((((a,), -y)), support_a_not_y)
+            hash_a_not_y[a] = True
+        if len(support_not_a_not_y) == 0:
             # for not a -> b: no not a -> not b
-            rules.append(((-a,), y))
-        elif len(dict_values_0[a].intersection(dict_values_1[y])) == 0:
+            rules_2.append((((-a,), y), support_not_a_y))
+            hash_not_a_y[a] = True
+        elif len(support_not_a_y) == 0:
             # for not a -> not b: no not a -> b
-            rules.append(((-a,), -y))
+            rules_2.append((((-a,), -y), support_not_a_not_y))
+            hash_not_a_not_y[a] = True
     
-    print("n rules (k=2):", len(rules))
+        n_tests += 1
+
+    if len(rules_2) > n_max_rules:
+        rules_2 = sorted(rules_2, key=lambda x: x[1], reverse=True)[:n_max_rules]
+    
+    rules_2 = [r[0] for r in rules_2]
+    print("n rules (k=2):", len(rules_2))
+
     #print("2k rules: ", rules)
     #for k == 3: generate all a and b -> c rules
     candidates = tuple(combinations(range(1, n_features), 2))
@@ -320,46 +344,70 @@ def madelaine(database, time_limit=3600):
     # a and b => not c 
     # not a and b => c 
     # not a and b => not c 
-
+    rules_3 = []
     for i, candidate in enumerate(candidates):
         
-        if i % 10000 == 0 and ((time.time() - total_time) > time_limit or len(rules) > 500000):
+        if len(rules_3) % 100 == 0 and ((time.time() - total_time) > time_limit):
             break
         a, b = candidate[0], candidate[1]
         intersection_a_b = dict_values_1[a].intersection(dict_values_1[b])
         intersection_not_a_b = dict_values_0[a].intersection(dict_values_1[b])
         intersection_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
         intersection_not_a_not_b=dict_values_0[a].intersection(dict_values_0[b])
+
+        support_a_b_y = intersection_a_b.intersection(dict_values_1[y])
+        support_a_b_not_y = intersection_a_b.intersection(dict_values_0[y])
+        support_not_a_b_y = intersection_not_a_b.intersection(dict_values_1[y])
+        support_not_a_b_not_y = intersection_not_a_b.intersection(dict_values_0[y])
+        support_a_not_b_y = intersection_a_not_b.intersection(dict_values_1[y])
+        support_a_not_b_not_y = intersection_a_not_b.intersection(dict_values_0[y])
+        support_not_a_not_b_y = intersection_not_a_not_b.intersection(dict_values_1[y])
+        support_not_a_not_b_not_y = intersection_not_a_not_b.intersection(dict_values_0[y])
+
         # a and b => c: no a and b => not c 
-        if len(intersection_a_b.intersection(dict_values_0[y])) == 0:
-            rules.append(((a, b), y))
+        if len(support_a_b_not_y) == 0:
+            if not (hash_a_y[a] or hash_a_y[b]): 
+                rules_3.append((((a, b), y), support_a_b_y))
         # a and b => not c: no a and b => c 
-        elif len(intersection_a_b.intersection(dict_values_1[y])) == 0:
-            rules.append(((a, b), -y))
+        elif len(support_a_b_y) == 0:
+            if not (hash_a_not_y[a] or hash_a_not_y[b]): 
+                rules_3.append((((a, b), -y), support_a_b_not_y))
         
         # not a and b => c: no not a and b => not c 
-        if len(intersection_not_a_b.intersection(dict_values_0[y])) == 0:
-            rules.append(((-a, b), y))
+        if len(support_not_a_b_not_y) == 0:
+            if not (hash_not_a_y[a] or hash_a_y[b]): 
+                rules_3.append((((-a, b), y), support_not_a_b_y))
         # not a and b => not c: no not a and b => c 
-        elif len(intersection_not_a_b.intersection(dict_values_1[y])) == 0:
-            rules.append(((-a, b), -y))
+        elif len(support_not_a_b_y) == 0:
+            if not (hash_not_a_not_y[a] or hash_a_not_y[b]): 
+                rules_3.append((((-a, b), -y), support_not_a_b_not_y))
         
         # a and not b => c: no a and not b => not c 
-        if len(intersection_a_not_b.intersection(dict_values_0[y])) == 0:
-            rules.append(((a, -b), y))
+        if len(support_a_not_b_not_y) == 0:
+            if not (hash_a_y[a] or hash_not_a_y[b]): 
+                rules_3.append((((a, -b), y), support_a_not_b_y))
         # a and not b => not c: no a and not b => c 
-        elif len(intersection_a_not_b.intersection(dict_values_1[y])) == 0:
-            rules.append(((a, -b), -y))
+        elif len(support_a_not_b_y) == 0:
+            if not (hash_a_not_y[a] or hash_not_a_not_y[b]): 
+                rules_3.append((((a, -b), -y), support_a_not_b_not_y))
 
         # not a and not b => c: no not a and not b => not c
-        if len(intersection_not_a_not_b.intersection(dict_values_0[y])) == 0:
-            rules.append(((-a, -b), y))
+        if len(support_not_a_not_b_not_y) == 0:
+            if not (hash_not_a_y[a] or hash_not_a_y[b]): 
+                rules_3.append((((-a, -b), y), support_not_a_not_b_y))
         # not a and not b => -c: no not a and not b => c
-        elif len(intersection_not_a_not_b.intersection(dict_values_1[y])) == 0:
-            rules.append(((-a, -b), -y))
-        
-    print("rules:", rules[0:3])
-    print("total n rules:", len(rules))
+        elif len(support_not_a_not_b_y) == 0:
+            if not (hash_not_a_not_y[a] or hash_not_a_not_y[b]):
+                rules_3.append((((-a, -b), -y), support_not_a_not_b_not_y))
+        n_tests += 1
+
+    if len(rules_3) > n_max_rules:
+        rules_3 = sorted(rules_3, key=lambda x: x[1], reverse=True)[:n_max_rules]
+    
+    print("n rules (k = 3):", len(rules_3))
+    rules = [r[0] for r in rules_3] + rules_2
+    print("n rules (total):", len(rules))
+    
     return (time.time() - total_time), rules
 
     

@@ -9,7 +9,7 @@ import time
 # I load the dataset
 
 n_max_rules = int(Tools.Options.types)
-print(n_max_rules)
+print("n_max_rules:", n_max_rules)
 name=Tools.Options.dataset 
 data = pd.read_csv(name+'.csv')
 # Split the DataFrame into training and test sets

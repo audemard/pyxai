@@ -4,8 +4,8 @@ from pyxai import Learning, Explainer, Tools ,Builder
 from sklearn.model_selection import train_test_split
 import pandas as pd
 from pysat.solvers import Glucose3
-import matplotlib
-matplotlib.use('Qt5Agg')  # Choisit le backend Qt5
+#import matplotlib
+#matplotlib.use('Qt5Agg')  # Choisit le backend Qt5
 import matplotlib.pyplot as plt
 import time
 import json
@@ -14,6 +14,9 @@ import os
 Tools.set_verbose(0)
 glucose = Glucose3()
 name=Tools.Options.dataset
+n_max_rules = int(Tools.Options.types)
+print("n_max_rules:", n_max_rules)
+
 data = pd.read_csv(name+'.csv')
 name=name
 # Dividing the DataFrame into training, testing, and validation sets
@@ -128,7 +131,7 @@ for i, rf_model in enumerate(rf_models) :
 ##############################################################################################################
 
 start_time = time.time()
-madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=120)
+madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
 end_time = time.time()
 elapsed_time_aprioris = (end_time - start_time)
 association_dict = {}
@@ -138,20 +141,21 @@ for antecedent, consequent in rules:
     association_dict[antecedent] = consequent
 association_dict_copy = dict(association_dict)
 new_association_dict = dict(association_dict)
-print(new_association_dict)
+#print(new_association_dict)
 nb_rules=[]
 #simplification
 # Parcours du dictionnaire
 for antecedent, consequent in association_dict.items():
     for clause in clauses:
         if clause[0][0] in list((antecedent)) and clause[1][0] in list(antecedent):
-            print("antecedent",antecedent)
-            print("a supprimer",clause[1][0])
-            print(new_association_dict[antecedent])
+            #print("antecedent",antecedent)
+            #print("a supprimer",clause[1][0])
+            #print(new_association_dict[antecedent])
             new_association_dict = apriori_classement_rules.remove_element_from_key(new_association_dict, antecedent, clause[1][0])
 print("nombre de régles extraire",len(association_dict_copy))
 nb_rules.append(len(association_dict_copy))
 print("nombre de regles restante aprés simplification avec theorie",len(new_association_dict))
+
 #généralisation
 keys_to_delete = []  # Liste pour stocker les clés à supprimer
 
