@@ -131,8 +131,13 @@ for i, rf_model in enumerate(rf_models) :
 ##############################################################################################################
 
 start_time = time.time()
-madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
+len_rules_2, len_rules_3, len_rules_total, madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
 end_time = time.time()
+
+print("len_rules_2:", len_rules_2)
+print("len_rules_3:", len_rules_3)
+print("len_rules_total:", len_rules_total)
+
 elapsed_time_aprioris = (end_time - start_time)
 association_dict = {}
 antecedents=[]
@@ -145,16 +150,16 @@ new_association_dict = dict(association_dict)
 nb_rules=[]
 #simplification
 # Parcours du dictionnaire
-for antecedent, consequent in association_dict.items():
-    for clause in clauses:
-        if clause[0][0] in list((antecedent)) and clause[1][0] in list(antecedent):
+#for antecedent, consequent in association_dict.items():
+#    for clause in clauses:
+#        if clause[0][0] in list((antecedent)) and clause[1][0] in list(antecedent):
             #print("antecedent",antecedent)
             #print("a supprimer",clause[1][0])
             #print(new_association_dict[antecedent])
-            new_association_dict = apriori_classement_rules.remove_element_from_key(new_association_dict, antecedent, clause[1][0])
-print("nombre de régles extraire",len(association_dict_copy))
-nb_rules.append(len(association_dict_copy))
-print("nombre de regles restante aprés simplification avec theorie",len(new_association_dict))
+#            new_association_dict = apriori_classement_rules.remove_element_from_key(new_association_dict, antecedent, clause[1][0])
+#print("nombre de régles extraire",len(association_dict_copy))
+#nb_rules.append(len(association_dict_copy))
+#print("nombre de regles restante aprés simplification avec theorie",len(new_association_dict))
 
 #généralisation
 # keys_to_delete = []  # Liste pour stocker les clés à supprimer
@@ -235,8 +240,16 @@ for b in range(len(yo)):
     number_of_nodes_for_all_trees.append(number_of_nodes)
     depth_rectification_for_each_rule.append(depth_rectification_)
     time_rectification_for_each_rule.append(time_unwind)
+
 data_ = {
     "dataset name":name,
+    "n_instances":len(data),
+    "n_instances_training":len(train_df),
+    "n_instances_validation":len(validation_df),
+    "n_max_rules": n_max_rules,
+    "len_rules_2:": len_rules_2,
+    "len_rules_3:": len_rules_3,
+    "len_rules_total:": len_rules_total,    
     "accuracy_of_the_random_forest_on_test_set":rf_learner.get_details()[0]["metrics"]["accuracy"],
     "columns_of_the_non_binarized_data_set":rf_learner.get_details()[0]['feature_names'],
     "columns_of_the_binarized_data_set":rf_learner1.get_details()[0]['feature_names'],

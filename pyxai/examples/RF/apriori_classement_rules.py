@@ -292,13 +292,45 @@ def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
     hash_a_not_y = [False]*(n_features+1)
     hash_not_a_not_y = [False]*(n_features+1)
 
+    hash_a_b = [False]*((n_features+1)*n_features+1)
+    hash_not_a_b = [False]*((n_features+1)*n_features+1)
+    hash_a_not_b = [False]*((n_features+1)*n_features+1)
+    hash_not_a_not_b = [False]*((n_features+1)*n_features+1)
+
+
+    # Compute all A->B to remove the A and B -> Y that are subsumed 
+    candidates = tuple(combinations(range(1, n_features-1), 2)) # n_features-1 to remove y
+
+    for candidate in candidates:
+        a, b = candidate[0], candidate[1]
+        key = a * b
+        support_a_b = dict_values_1[a].intersection(dict_values_1[b])
+        support_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
+        support_not_a_b = dict_values_0[a].intersection(dict_values_1[b])
+        support_not_a_not_b = dict_values_0[a].intersection(dict_values_0[b])
+
+        if len(support_a_not_b) == 0:
+            # for a -> b: there is no (a -> not b) in the instances
+            hash_a_b[key] = True
+        elif len(support_a_b) == 0:
+            # for a -> not b: no a -> b
+            hash_a_not_b[key] = True
+        if len(support_not_a_not_b) == 0:
+            # for not a -> b: no not a -> not b
+            hash_not_a_b[key] = True
+        elif len(support_not_a_b) == 0:
+            # for not a -> not b: no not a -> b
+            hash_not_a_not_b[key] = True
+        
+
+
     #for k == 2: generate all a->b rules
     candidates = tuple(combinations(range(1, n_features), 1))
 
     print("len candidates (k=2):", len(candidates))
 
     #Test all candidates: test a -> b, not(a) -> b, a -> not(b) and not(a) -> not(b)  
-    rules_2 = []
+    rules = []
     y = n_features
     n_tests = 0
 
@@ -312,29 +344,24 @@ def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
 
         if len(support_a_not_y) == 0:
             # for a -> b: there is no (a -> not b) in the instances
-            rules_2.append((((a,), y),support_a_y))
+            rules.append((((a,), y),support_a_y))
             hash_a_y[a] = True
         elif len(support_a_y) == 0:
             # for a -> not b: no a -> b
-            rules_2.append((((a,), -y)), support_a_not_y)
+            rules.append((((a,), -y), support_a_not_y))
             hash_a_not_y[a] = True
         if len(support_not_a_not_y) == 0:
             # for not a -> b: no not a -> not b
-            rules_2.append((((-a,), y), support_not_a_y))
+            rules.append((((-a,), y), support_not_a_y))
             hash_not_a_y[a] = True
         elif len(support_not_a_y) == 0:
             # for not a -> not b: no not a -> b
-            rules_2.append((((-a,), -y), support_not_a_not_y))
+            rules.append((((-a,), -y), support_not_a_not_y))
             hash_not_a_not_y[a] = True
     
         n_tests += 1
 
-    if len(rules_2) > n_max_rules:
-        rules_2 = sorted(rules_2, key=lambda x: x[1], reverse=True)[:n_max_rules]
     
-    rules_2 = [r[0] for r in rules_2]
-    print("n rules (k=2):", len(rules_2))
-
     #print("2k rules: ", rules)
     #for k == 3: generate all a and b -> c rules
     candidates = tuple(combinations(range(1, n_features), 2))
@@ -344,12 +371,12 @@ def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
     # a and b => not c 
     # not a and b => c 
     # not a and b => not c 
-    rules_3 = []
     for i, candidate in enumerate(candidates):
         
-        if len(rules_3) % 100 == 0 and ((time.time() - total_time) > time_limit):
+        if len(rules) % 100 == 0 and ((time.time() - total_time) > time_limit):
             break
         a, b = candidate[0], candidate[1]
+        key_a_b = a * b
         intersection_a_b = dict_values_1[a].intersection(dict_values_1[b])
         intersection_not_a_b = dict_values_0[a].intersection(dict_values_1[b])
         intersection_a_not_b = dict_values_1[a].intersection(dict_values_0[b])
@@ -366,49 +393,51 @@ def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
 
         # a and b => c: no a and b => not c 
         if len(support_a_b_not_y) == 0:
-            if not (hash_a_y[a] or hash_a_y[b]): 
-                rules_3.append((((a, b), y), support_a_b_y))
+            if not (hash_a_y[a] or hash_a_y[b] or hash_a_not_b[key_a_b]): 
+                rules.append((((a, b), y), support_a_b_y))
         # a and b => not c: no a and b => c 
         elif len(support_a_b_y) == 0:
-            if not (hash_a_not_y[a] or hash_a_not_y[b]): 
-                rules_3.append((((a, b), -y), support_a_b_not_y))
+            if not (hash_a_not_y[a] or hash_a_not_y[b] or hash_a_not_b[key_a_b]): 
+                rules.append((((a, b), -y), support_a_b_not_y))
         
         # not a and b => c: no not a and b => not c 
         if len(support_not_a_b_not_y) == 0:
-            if not (hash_not_a_y[a] or hash_a_y[b]): 
-                rules_3.append((((-a, b), y), support_not_a_b_y))
+            if not (hash_not_a_y[a] or hash_a_y[b] or hash_not_a_not_b[key_a_b]): 
+                rules.append((((-a, b), y), support_not_a_b_y))
         # not a and b => not c: no not a and b => c 
         elif len(support_not_a_b_y) == 0:
-            if not (hash_not_a_not_y[a] or hash_a_not_y[b]): 
-                rules_3.append((((-a, b), -y), support_not_a_b_not_y))
+            if not (hash_not_a_not_y[a] or hash_a_not_y[b] or hash_not_a_not_b[key_a_b]): 
+                rules.append((((-a, b), -y), support_not_a_b_not_y))
         
         # a and not b => c: no a and not b => not c 
         if len(support_a_not_b_not_y) == 0:
-            if not (hash_a_y[a] or hash_not_a_y[b]): 
-                rules_3.append((((a, -b), y), support_a_not_b_y))
+            if not (hash_a_y[a] or hash_not_a_y[b] or hash_a_b[key_a_b]): 
+                rules.append((((a, -b), y), support_a_not_b_y))
         # a and not b => not c: no a and not b => c 
         elif len(support_a_not_b_y) == 0:
-            if not (hash_a_not_y[a] or hash_not_a_not_y[b]): 
-                rules_3.append((((a, -b), -y), support_a_not_b_not_y))
+            if not (hash_a_not_y[a] or hash_not_a_not_y[b] or hash_a_b[key_a_b]): 
+                rules.append((((a, -b), -y), support_a_not_b_not_y))
 
         # not a and not b => c: no not a and not b => not c
         if len(support_not_a_not_b_not_y) == 0:
-            if not (hash_not_a_y[a] or hash_not_a_y[b]): 
-                rules_3.append((((-a, -b), y), support_not_a_not_b_y))
+            if not (hash_not_a_y[a] or hash_not_a_y[b] or hash_not_a_b[key_a_b]): 
+                rules.append((((-a, -b), y), support_not_a_not_b_y))
         # not a and not b => -c: no not a and not b => c
         elif len(support_not_a_not_b_y) == 0:
-            if not (hash_not_a_not_y[a] or hash_not_a_not_y[b]):
-                rules_3.append((((-a, -b), -y), support_not_a_not_b_not_y))
+            if not (hash_not_a_not_y[a] or hash_not_a_not_y[b] or hash_not_a_b[key_a_b]):
+                rules.append((((-a, -b), -y), support_not_a_not_b_not_y))
         n_tests += 1
 
-    if len(rules_3) > n_max_rules:
-        rules_3 = sorted(rules_3, key=lambda x: x[1], reverse=True)[:n_max_rules]
+    if len(rules) > n_max_rules:
+        rules = sorted(rules, key=lambda x: x[1], reverse=True)[:n_max_rules]
     
-    print("n rules (k = 3):", len(rules_3))
-    rules = [r[0] for r in rules_3] + rules_2
+    rules = [r[0] for r in rules]
+    len_rules_2 = len(tuple(r for r in rules if len(r[0]) == 1))
+    len_rules_3 = len(tuple(r for r in rules if len(r[0]) == 2))
+
     print("n rules (total):", len(rules))
     
-    return (time.time() - total_time), rules
+    return len_rules_2, len_rules_3, len(rules), (time.time() - total_time), rules
 
     
 

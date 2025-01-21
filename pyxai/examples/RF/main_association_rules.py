@@ -53,8 +53,11 @@ min_support = 0.5
 min_confidence = 1
 max_length=3
 print("Start madelaine ...")
-madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
+len_rules_2, len_rules_3, len_rules_total, madelaine_time, rules = apriori_association_rules.madelaine(df_filtered, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
 print("End madelaine time: ", madelaine_time)
+print("len_rules_2:", len_rules_2)
+print("len_rules_3:", len_rules_3)
+print("len_rules_total:", len_rules_total)
 
 # Display the number of rules generated.
 print(f"Nombre de règles: {len(rules)}")
@@ -159,10 +162,12 @@ for t, t1 in zip(treasean, treasean1):
 #Recording the extracted logs.
 data_ = {
     "dataset_name": name,
+    "n_max_rules": n_max_rules,
     "theory_initial": len(theory_initial),
     "theory_association_rules": len(theory_association_rules),
-    "confidence":min_confidence,
-    "support":min_support,
+    "len_rules_2:": len_rules_2,
+    "len_rules_3:": len_rules_3,
+    "len_rules_total:": len_rules_total,    
     "nb_instances_excluded":nb_instances_excluded,
     "size_majority_reason_literal_1": majoritary_literal_reason1,
     "size_majority_reason_literal_2": majoritary_literal_reason2,

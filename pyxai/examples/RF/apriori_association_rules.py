@@ -187,7 +187,7 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
     print("len candidates (k=2):", len(candidates))
 
     #Test all candidates: test a -> b, not(a) -> b, a -> not(b) and not(a) -> not(b)  
-    rules_2 = []
+    #rules_2 = []
     rules = []
 
     n_tests = 0
@@ -204,29 +204,29 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
 
         if len(support_a_not_b) == 0:
             # for a -> b: there is no (a -> not b) in the instances
-            rules_2.append((((a,), b), len(support_a_b)))
+            rules.append((((a,), b), len(support_a_b)))
             hash_not_x_or_y[key] = True
         elif len(support_a_b) == 0:
             # for a -> not b: no a -> b
-            rules_2.append((((a,), -b), len(support_a_not_b)))
+            rules.append((((a,), -b), len(support_a_not_b)))
             hash_not_x_or_not_y[key] = True
         if len(support_not_a_not_b) == 0:
             # for not a -> b: no not a -> not b
-            rules_2.append((((-a,), b), len(support_not_a_b)))
+            rules.append((((-a,), b), len(support_not_a_b)))
             hash_x_or_y[key] = True
         elif len(support_not_a_b) == 0:
             # for not a -> not b: no not a -> b
-            rules_2.append((((-a,), -b), len(support_not_a_not_b)))
+            rules.append((((-a,), -b), len(support_not_a_not_b)))
             hash_x_or_not_y[key] = True
         #if size_before != len(rules_2):
         #    print("ICI" , binary_to_features(explainer, a), binary_to_features(explainer, b))
         n_tests += 1
 
-    if len(rules_2) > n_max_rules:
-        rules_2 = sorted(rules_2, key=lambda x: x[1], reverse=True)[:n_max_rules]
-    rules_2 = [r[0] for r in rules_2]
-
-    print("n rules (k=2):", len(rules_2))
+    #if len(rules_2) > n_max_rules:
+    #    rules_2 = sorted(rules_2, key=lambda x: x[1], reverse=True)[:n_max_rules]
+    #rules_2 = [r[0] for r in rules_2]
+    #len_rules_2 = len(rules_2)
+    #print("n rules (k=2):", len(rules_2))
 
 
     #for k == 3: generate all a and b -> c rules
@@ -300,13 +300,15 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
     
     if len(rules) > n_max_rules:
         rules = sorted(rules, key=lambda x: x[1], reverse=True)[:n_max_rules]
-    print(rules[0:20])
 
-    rules = [r[0] for r in rules] + rules_2
+    rules = [r[0] for r in rules] 
+    len_rules_2 = len(tuple(r for r in rules if len(r[0]) == 1))
+    len_rules_3 = len(tuple(r for r in rules if len(r[0]) == 2))
+     
     print("total n tests:", n_tests)
     print("total n rules:", len(rules))
 
-    return (time.time() - total_time), rules
+    return len_rules_2, len_rules_3, len(rules), (time.time() - total_time), rules
 
     
 
