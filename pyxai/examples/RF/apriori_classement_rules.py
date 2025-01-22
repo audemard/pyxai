@@ -344,19 +344,19 @@ def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
 
         if len(support_a_not_y) == 0:
             # for a -> b: there is no (a -> not b) in the instances
-            rules.append((((a,), y),support_a_y))
+            rules.append((((a,), y), len(support_a_y)))
             hash_a_y[a] = True
         elif len(support_a_y) == 0:
             # for a -> not b: no a -> b
-            rules.append((((a,), -y), support_a_not_y))
+            rules.append((((a,), -y), len(support_a_not_y)))
             hash_a_not_y[a] = True
         if len(support_not_a_not_y) == 0:
             # for not a -> b: no not a -> not b
-            rules.append((((-a,), y), support_not_a_y))
+            rules.append((((-a,), y), len(support_not_a_y)))
             hash_not_a_y[a] = True
         elif len(support_not_a_y) == 0:
             # for not a -> not b: no not a -> b
-            rules.append((((-a,), -y), support_not_a_not_y))
+            rules.append((((-a,), -y), len(support_not_a_not_y)))
             hash_not_a_not_y[a] = True
     
         n_tests += 1
@@ -394,43 +394,49 @@ def madelaine(database, time_limit=3600, n_max_rules=200000, explainer=None):
         # a and b => c: no a and b => not c 
         if len(support_a_b_not_y) == 0:
             if not (hash_a_y[a] or hash_a_y[b] or hash_a_not_b[key_a_b]): 
-                rules.append((((a, b), y), support_a_b_y))
+                rules.append((((a, b), y), len(support_a_b_y)))
         # a and b => not c: no a and b => c 
         elif len(support_a_b_y) == 0:
             if not (hash_a_not_y[a] or hash_a_not_y[b] or hash_a_not_b[key_a_b]): 
-                rules.append((((a, b), -y), support_a_b_not_y))
+                rules.append((((a, b), -y), len(support_a_b_not_y)))
         
         # not a and b => c: no not a and b => not c 
         if len(support_not_a_b_not_y) == 0:
             if not (hash_not_a_y[a] or hash_a_y[b] or hash_not_a_not_b[key_a_b]): 
-                rules.append((((-a, b), y), support_not_a_b_y))
+                rules.append((((-a, b), y), len(support_not_a_b_y)))
         # not a and b => not c: no not a and b => c 
         elif len(support_not_a_b_y) == 0:
             if not (hash_not_a_not_y[a] or hash_a_not_y[b] or hash_not_a_not_b[key_a_b]): 
-                rules.append((((-a, b), -y), support_not_a_b_not_y))
+                rules.append((((-a, b), -y), len(support_not_a_b_not_y)))
         
         # a and not b => c: no a and not b => not c 
         if len(support_a_not_b_not_y) == 0:
             if not (hash_a_y[a] or hash_not_a_y[b] or hash_a_b[key_a_b]): 
-                rules.append((((a, -b), y), support_a_not_b_y))
+                rules.append((((a, -b), y), len(support_a_not_b_y)))
         # a and not b => not c: no a and not b => c 
         elif len(support_a_not_b_y) == 0:
             if not (hash_a_not_y[a] or hash_not_a_not_y[b] or hash_a_b[key_a_b]): 
-                rules.append((((a, -b), -y), support_a_not_b_not_y))
+                rules.append((((a, -b), -y), len(support_a_not_b_not_y)))
 
         # not a and not b => c: no not a and not b => not c
         if len(support_not_a_not_b_not_y) == 0:
             if not (hash_not_a_y[a] or hash_not_a_y[b] or hash_not_a_b[key_a_b]): 
-                rules.append((((-a, -b), y), support_not_a_not_b_y))
+                rules.append((((-a, -b), y), len(support_not_a_not_b_y)))
         # not a and not b => -c: no not a and not b => c
         elif len(support_not_a_not_b_y) == 0:
             if not (hash_not_a_not_y[a] or hash_not_a_not_y[b] or hash_not_a_b[key_a_b]):
-                rules.append((((-a, -b), -y), support_not_a_not_b_not_y))
+                rules.append((((-a, -b), -y), len(support_not_a_not_b_not_y)))
         n_tests += 1
-
-    if len(rules) > n_max_rules:
-        rules = sorted(rules, key=lambda x: x[1], reverse=True)[:n_max_rules]
     
+    print("len(rules):", len(rules))
+    print("n_max_rules:", n_max_rules)
+
+    rules = sorted(rules, key=lambda x: x[1], reverse=True)
+    if len(rules) > n_max_rules:
+        rules = rules[:n_max_rules]
+    
+    supports = [r[1]/n_instances for r in rules]
+    print("supports:", supports)
     rules = [r[0] for r in rules]
     len_rules_2 = len(tuple(r for r in rules if len(r[0]) == 1))
     len_rules_3 = len(tuple(r for r in rules if len(r[0]) == 2))

@@ -164,7 +164,6 @@ data_ = {
     "dataset_name": name,
     "n_max_rules": n_max_rules,
     "theory_initial": len(theory_initial),
-    "theory_association_rules": len(theory_association_rules),
     "len_rules_2:": len_rules_2,
     "len_rules_3:": len_rules_3,
     "len_rules_total:": len_rules_total,    

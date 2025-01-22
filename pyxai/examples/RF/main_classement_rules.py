@@ -55,7 +55,7 @@ training_data=pd.DataFrame(binarized_training, columns=[f"X_{i}" for i in range(
 for i, instance in validation_df.iterrows():
     rf_explainer.set_instance(instance[:-1])
     raw_validation.append(instance[:-1])
-    label_validation.append(instance[-1])
+    label_validation.append(int(instance[-1]))
     binarized_validation.append([0 if l < 0 else 1 for l in rf_explainer.binary_representation] +  [instance[-1]])
 labels=(rf_learner.labels_to_values(label_validation))
 ##############################################################################################################
@@ -131,7 +131,7 @@ for i, rf_model in enumerate(rf_models) :
 ##############################################################################################################
 
 start_time = time.time()
-len_rules_2, len_rules_3, len_rules_total, madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=3600, n_max_rules=n_max_rules, explainer=rf_explainer)
+len_rules_2, len_rules_3, len_rules_total, madelaine_time, rules = apriori_classement_rules.madelaine(training_data, time_limit=20, n_max_rules=n_max_rules, explainer=rf_explainer)
 end_time = time.time()
 
 print("len_rules_2:", len_rules_2)

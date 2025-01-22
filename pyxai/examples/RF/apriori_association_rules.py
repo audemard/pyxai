@@ -297,9 +297,9 @@ def madelaine(database, *, time_limit=3600, n_max_rules=200000, explainer=None):
         n_tests += 1
     
     
-    
+    rules = sorted(rules, key=lambda x: x[1], reverse=True)
     if len(rules) > n_max_rules:
-        rules = sorted(rules, key=lambda x: x[1], reverse=True)[:n_max_rules]
+        rules = rules[:n_max_rules]
 
     rules = [r[0] for r in rules] 
     len_rules_2 = len(tuple(r for r in rules if len(r[0]) == 1))
